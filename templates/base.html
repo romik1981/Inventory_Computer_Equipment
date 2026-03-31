@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{% block title %}КартриджУчёт{% endblock %}</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link rel="stylesheet" href="/static/fonts/fonts.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#F5F5F7;
+  --surface:#FFFFFF;
+  --surface2:#F5F5F7;
+  --surface3:#EBEBED;
+  --border:rgba(0,0,0,0.08);
+  --border2:rgba(0,0,0,0.14);
+  --shadow:0 1px 3px rgba(0,0,0,.04),0 0 0 0.5px rgba(0,0,0,.06);
+  --shadow-md:0 4px 20px rgba(0,0,0,.09),0 0 0 0.5px rgba(0,0,0,.06);
+  --accent:#007AFF;
+  --accent-l:rgba(0,122,255,.08);
+  --accent-h:#0062CC;
+  --green:#34C759;--green-l:rgba(52,199,89,.1);
+  --orange:#FF9500;--orange-l:rgba(255,149,0,.1);
+  --red:#FF3B30;--red-l:rgba(255,59,48,.08);
+  --purple:#AF52DE;--purple-l:rgba(175,82,222,.1);
+  --text:#1D1D1F;--text2:#3A3A3C;--muted:#8E8E93;
+  --font:-apple-system,BlinkMacSystemFont,'SF Pro Display','Inter','Segoe UI',system-ui,sans-serif;
+  --mono:'SF Mono','JetBrains Mono','Fira Code',monospace;
+  --r:12px;--rs:8px;--sw:228px;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--font);font-size:14px;min-height:100vh;-webkit-font-smoothing:antialiased}
+a{color:var(--accent);text-decoration:none}
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(0,0,0,0.18);border-radius:10px}
+::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,0.28)}
+.layout{display:flex;min-height:100vh}
+
+/* ── SIDEBAR ─────────────────────────────────────── */
+.sidebar{
+  width:var(--sw);flex-shrink:0;position:fixed;height:100vh;
+  background:rgba(255,255,255,0.97);
+  border-right:1px solid var(--border);
+  display:flex;flex-direction:column;z-index:20;
+}
+@supports (backdrop-filter:blur(1px)){
+  .sidebar{background:rgba(255,255,255,0.85);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);}
+}
+.sidebar-logo{
+  padding:20px 16px 16px;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:11px;
+}
+.logo-icon{
+  width:38px;height:38px;border-radius:10px;
+  background:linear-gradient(135deg,#007AFF 0%,#5AC8FA 100%);
+  display:flex;align-items:center;justify-content:center;
+  font-size:19px;flex-shrink:0;
+  box-shadow:0 4px 12px rgba(0,122,255,.35);
+}
+.logo-name{font-size:13px;font-weight:700;color:var(--text);letter-spacing:-.2px}
+.logo-sub{font-size:10px;color:var(--muted);margin-top:1px;font-weight:400}
+nav{flex:1;padding:8px 10px;overflow-y:auto}
+.nav-sep{
+  font-size:10px;font-weight:600;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.6px;
+  padding:12px 8px 5px;
+}
+nav a{
+  display:flex;align-items:center;gap:9px;
+  padding:7px 9px;color:var(--text2);
+  font-size:13px;font-weight:500;
+  border-radius:8px;transition:all .12s;
+  margin-bottom:1px;position:relative;
+}
+nav a:hover{background:var(--surface3);color:var(--text)}
+nav a.active{background:var(--accent-l);color:var(--accent);font-weight:600}
+.nav-icon{font-size:15px;width:20px;text-align:center;flex-shrink:0;opacity:.85}
+.nbadge{
+  margin-left:auto;background:var(--red);color:#fff;
+  border-radius:20px;padding:1px 6px;font-size:9px;font-weight:700;
+}
+.sidebar-footer{padding:10px 12px 14px;border-top:1px solid var(--border)}
+.user-card{
+  border-radius:10px;padding:9px 11px;
+  display:flex;align-items:center;gap:9px;
+}
+.user-av{
+  width:30px;height:30px;border-radius:50%;
+  background:var(--accent);
+  display:flex;align-items:center;justify-content:center;
+  font-weight:600;font-size:12px;color:#fff;flex-shrink:0;
+}
+.user-nm{font-size:12px;font-weight:600;color:var(--text)}
+.user-rl{font-size:10px;color:var(--muted);margin-top:1px}
+.logout-link{
+  display:block;text-align:center;margin-top:6px;padding:7px;
+  border:1px solid var(--border2);border-radius:8px;color:var(--muted);
+  font-size:11px;font-weight:500;transition:.12s;
+}
+.logout-link:hover{border-color:var(--red);color:var(--red);background:var(--red-l)}
+
+/* ── MAIN ────────────────────────────────────────── */
+.main{margin-left:var(--sw);flex:1;display:flex;flex-direction:column}
+.topbar{
+  background:rgba(255,255,255,0.97);
+  border-bottom:1px solid var(--border);
+  padding:14px 28px;
+  display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;z-index:10;
+}
+@supports (backdrop-filter:blur(1px)){
+  .topbar{background:rgba(255,255,255,0.85);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);}
+}
+.page-title{font-size:18px;font-weight:700;color:var(--text);letter-spacing:-.3px}
+.page-sub{font-size:11px;color:var(--muted);margin-top:2px;font-weight:400}
+.content{padding:22px 28px;flex:1}
+
+/* ── CARDS ───────────────────────────────────────── */
+.card{
+  background:var(--surface);
+  border-radius:var(--r);padding:18px;margin-bottom:14px;
+  box-shadow:var(--shadow);
+}
+.card-title{
+  font-size:10px;text-transform:uppercase;
+  letter-spacing:.6px;color:var(--muted);
+  margin-bottom:13px;font-weight:600;
+}
+
+/* ── STAT CARDS ──────────────────────────────────── */
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:18px}
+.stat-card{
+  background:var(--surface);border-radius:var(--r);
+  padding:16px 18px;box-shadow:var(--shadow);
+  position:relative;overflow:hidden;
+  transition:transform .16s,box-shadow .16s;cursor:default;
+}
+.stat-card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
+.stat-card::before{
+  content:'';position:absolute;top:0;left:0;right:0;height:2.5px;
+  background:var(--c,var(--accent));border-radius:var(--r) var(--r) 0 0;
+}
+.stat-card::after{
+  content:'';position:absolute;bottom:-16px;right:-12px;
+  width:60px;height:60px;border-radius:50%;
+  background:var(--c,var(--accent));opacity:.06;
+}
+.stat-num{font-size:28px;font-weight:700;color:var(--text);line-height:1.1;letter-spacing:-.5px}
+.stat-label{font-size:10px;color:var(--muted);margin-top:5px;font-weight:500;letter-spacing:.2px}
+
+/* ── TABLE ───────────────────────────────────────── */
+.table-wrap{overflow-x:auto;border-radius:var(--r);background:var(--surface)}
+table{width:100%;border-collapse:collapse;min-width:400px}
+thead{background:var(--surface2)}
+th{
+  padding:9px 12px;text-align:left;
+  font-size:10px;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.5px;font-weight:600;
+  border-bottom:1px solid var(--border);white-space:nowrap;
+}
+td{padding:9px 12px;border-bottom:1px solid var(--border);font-size:13px;vertical-align:middle}
+tr:last-child td{border-bottom:none}
+tbody tr{transition:background .1s}
+tbody tr:hover td{background:rgba(0,122,255,.03)}
+tfoot td{background:var(--surface2);font-weight:600;border-top:1.5px solid var(--border)}
+.qty-input{
+  background:var(--surface2);border:1px solid var(--border2);color:var(--text);
+  padding:4px 6px;border-radius:6px;width:56px;text-align:center;
+  font-family:var(--mono);font-size:12px;font-weight:500;outline:none;transition:.12s;
+}
+.qty-input:focus{border-color:var(--accent);background:#fff;box-shadow:0 0 0 3px rgba(0,122,255,.12)}
+.qty-input.has-val{border-color:var(--green);color:var(--green);background:var(--green-l)}
+
+/* ── BUTTONS ─────────────────────────────────────── */
+.btn{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:7px 14px;border-radius:8px;
+  font-family:var(--font);font-size:12px;font-weight:600;
+  cursor:pointer;border:1px solid transparent;
+  transition:all .12s;white-space:nowrap;
+}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{background:var(--accent-h)}
+.btn-outline{background:var(--surface);color:var(--accent);border-color:var(--border2)}
+.btn-outline:hover{background:var(--accent-l);border-color:var(--accent)}
+.btn-green{background:var(--green);color:#fff}
+.btn-green:hover{background:#28A745;filter:brightness(.95)}
+.btn-red{background:var(--surface);color:var(--red);border-color:rgba(255,59,48,.25)}
+.btn-red:hover{background:var(--red-l);border-color:var(--red)}
+.btn-orange{background:var(--surface);color:var(--orange);border-color:rgba(255,149,0,.25)}
+.btn-orange:hover{background:var(--orange-l);border-color:var(--orange)}
+.btn-sm{padding:5px 11px;font-size:11px;border-radius:7px}
+.btn-xs{padding:3px 8px;font-size:10px;border-radius:5px}
+
+/* ── TAGS ────────────────────────────────────────── */
+.tag{display:inline-flex;align-items:center;padding:2px 9px;border-radius:20px;font-size:10.5px;font-weight:600}
+.tag-blue{background:var(--accent-l);color:var(--accent)}
+.tag-green{background:var(--green-l);color:#248A3D}
+.tag-orange{background:var(--orange-l);color:#C93400}
+.tag-red{background:var(--red-l);color:#C0392B}
+.tag-purple{background:var(--purple-l);color:var(--purple)}
+.tag-gray{background:var(--surface2);color:var(--muted);border:1px solid var(--border)}
+.floor-badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:12px;font-size:10px;font-weight:600}
+
+/* ── MODAL ───────────────────────────────────────── */
+.modal-overlay{
+  display:none;position:fixed;inset:0;
+  background:rgba(0,0,0,.3);
+  backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);
+  z-index:100;align-items:center;justify-content:center;padding:20px;
+}
+.modal-overlay.open{display:flex;animation:fi .15s ease}
+@keyframes fi{from{opacity:0}to{opacity:1}}
+.modal{
+  background:var(--surface);border-radius:16px;padding:26px;
+  width:460px;max-width:95vw;max-height:90vh;overflow-y:auto;
+  box-shadow:0 32px 80px rgba(0,0,0,.2),0 0 0 0.5px rgba(0,0,0,.08);
+  animation:su .16s cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes su{from{transform:scale(.96) translateY(6px);opacity:0}to{transform:none;opacity:1}}
+.modal-title{font-size:16px;font-weight:700;margin-bottom:18px;color:var(--text);letter-spacing:-.2px}
+.form-group{margin-bottom:13px}
+.form-label{
+  display:block;font-size:10px;color:var(--muted);
+  margin-bottom:5px;font-weight:600;text-transform:uppercase;letter-spacing:.4px;
+}
+.form-input,.form-select{
+  width:100%;background:var(--surface2);border:1px solid var(--border2);
+  color:var(--text);padding:9px 12px;border-radius:8px;
+  font-family:var(--font);font-size:13px;font-weight:400;
+  outline:none;transition:.12s;
+}
+.form-input:focus,.form-select:focus{
+  border-color:var(--accent);background:#fff;
+  box-shadow:0 0 0 3px rgba(0,122,255,.12);
+}
+.form-input::placeholder{color:var(--muted);font-weight:400}
+.modal-actions{display:flex;gap:10px;margin-top:8px}
+
+/* ── MISC ────────────────────────────────────────── */
+.year-select{
+  background:var(--surface);border:1px solid var(--border2);color:var(--text);
+  padding:7px 11px;border-radius:8px;font-family:var(--font);
+  font-size:12px;font-weight:500;outline:none;transition:.12s;cursor:pointer;
+}
+.year-select:focus{border-color:var(--accent)}
+.search-input{
+  background:var(--surface);border:1px solid var(--border2);color:var(--text);
+  padding:7px 11px 7px 32px;border-radius:8px;font-family:var(--font);
+  font-size:12px;font-weight:400;outline:none;transition:.12s;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='13' height='13' viewBox='0 0 24 24' fill='none' stroke='%238E8E93' stroke-width='2.5'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:10px center;
+}
+.search-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(0,122,255,.12)}
+code{
+  color:var(--accent);font-family:var(--mono);font-size:11px;
+  background:var(--accent-l);padding:1px 5px;border-radius:5px;font-weight:500;
+}
+.empty{text-align:center;color:var(--muted);padding:48px;font-size:13px;font-weight:400}
+.filters{display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;align-items:center}
+.alert{padding:11px 14px;border-radius:10px;font-size:12.5px;margin-bottom:13px;font-weight:500}
+.alert-success{background:var(--green-l);border:1px solid rgba(52,199,89,.2);color:#248A3D}
+.alert-error{background:var(--red-l);border:1px solid rgba(255,59,48,.2);color:#C0392B}
+.alert-warning{background:var(--orange-l);border:1px solid rgba(255,149,0,.2);color:#C93400}
+.bar-chart{display:flex;align-items:flex-end;gap:4px;height:110px}
+.bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px}
+.bar-val{font-size:8.5px;color:var(--muted);min-height:12px;text-align:center;font-weight:600}
+.bar-track{width:100%;background:var(--surface2);border-radius:4px 4px 0 0;position:relative;overflow:hidden}
+.bar-fill{position:absolute;bottom:0;left:0;right:0;border-radius:3px 3px 0 0;transition:height .5s cubic-bezier(.4,0,.2,1)}
+.bar-lbl{font-size:8.5px;color:var(--muted);white-space:nowrap;font-weight:500}
+.progress-bar{height:8px;background:var(--surface2);border-radius:20px;overflow:hidden}
+.progress-fill{height:100%;border-radius:20px;transition:width .5s cubic-bezier(.4,0,.2,1)}
+.two-col{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:900px){.two-col{grid-template-columns:1fr}}
+.tabs{display:flex;gap:1px;border-bottom:1.5px solid var(--border);margin-bottom:18px}
+.tab-btn{
+  padding:8px 14px;background:transparent;border:none;color:var(--muted);
+  font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;
+  border-bottom:2px solid transparent;margin-bottom:-1.5px;transition:.12s;
+}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="logo-icon">🖨️</div>
+      <div>
+        <div class="logo-name">КартриджУчёт</div>
+        <div class="logo-sub">Управление расходниками</div>
+      </div>
+    </div>
+    <nav>
+      <div class="nav-sep">Главное</div>
+      <a href="/dashboard" class="{% if request.path=='/dashboard' %}active{% endif %}"><span class="nav-icon">📊</span>Дэшборд</a>
+      <a href="/records" class="{% if request.path=='/records' %}active{% endif %}"><span class="nav-icon">📋</span>Учёт расхода картриджей</a>
+      <a href="/toners" class="{% if request.path=='/toners' %}active{% endif %}"><span class="nav-icon">🧴</span>Тонеры</a>
+      <div class="nav-sep">Склад и техника</div>
+      <a href="/stock" class="{% if request.path=='/stock' %}active{% endif %}"><span class="nav-icon">📦</span>Склад<span id="stockBadge" class="nbadge" style="display:none"></span></a>
+      <a href="/equipment" class="{% if request.path=='/equipment' %}active{% endif %}"><span class="nav-icon">💻</span>Учёт техники</a>
+      <div class="nav-sep">Анализ</div>
+      <a href="/printers" class="{% if request.path=='/printers' %}active{% endif %}"><span class="nav-icon">🖨️</span>Принтеры</a>
+      <a href="/analytics" class="{% if request.path=='/analytics' %}active{% endif %}"><span class="nav-icon">📈</span>Аналитика</a>
+      {% if session.get('role')=='admin' %}
+      <div class="nav-sep">Система</div>
+      <a href="/admin" class="{% if request.path=='/admin' %}active{% endif %}"><span class="nav-icon">⚙️</span>Администрирование</a>
+      {% endif %}
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-card">
+        <div class="user-av">{{ session.get('username','?')[0].upper() }}</div>
+        <div>
+          <div class="user-nm">{{ session.get('username') }}</div>
+          <div class="user-rl">{{ 'Администратор' if session.get('role')=='admin' else 'Просмотр' if session.get('role')=='viewer' else 'Оператор' }}</div>
+        </div>
+      </div>
+      <a href="/logout" class="logout-link">Выйти из системы</a>
+    </div>
+  </aside>
+  <main class="main">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+
+<script>
+function checkStockAlerts(){
+  fetch("/api/stock/alerts").then(r=>r.json()).then(d=>{
+    var b=document.getElementById("stockBadge");
+    if(b){if(d.count>0){b.textContent=d.count;b.style.display="inline";}else{b.style.display="none";}}
+  }).catch(function(){});
+}
+checkStockAlerts();
+setInterval(checkStockAlerts,60000);
+</script>
+</body>
+</html>
+<script>
+// ── Live Updates via SSE ──────────────────────────────────────────────────────
+(function(){
+  if(!window.EventSource) return;
+
+  var es, reconnectTimer;
+
+  function connect(){
+    es = new EventSource("/api/events");
+
+    es.addEventListener("records", function(e){
+      var d = JSON.parse(e.data);
+      if(typeof load === "function" && (window.location.pathname === "/records")){
+        // Don't reload if current user just saved (they already have latest)
+        if(d.by !== "{{ session.get('username') }}") load();
+        else showLiveBadge(d.by);
+      }
+    });
+
+    es.addEventListener("toners", function(e){
+      var d = JSON.parse(e.data);
+      if(typeof load === "function" && window.location.pathname === "/toners"){
+        if(d.by !== "{{ session.get('username') }}") load();
+      }
+    });
+
+    es.addEventListener("stock", function(e){
+      var d = JSON.parse(e.data);
+      if(typeof load === "function" && window.location.pathname === "/stock"){
+        if(d.by !== "{{ session.get('username') }}") load();
+      }
+    });
+
+    es.addEventListener("equipment", function(e){
+      var d = JSON.parse(e.data);
+      if(typeof load === "function" && window.location.pathname === "/equipment"){
+        if(d.by !== "{{ session.get('username') }}") load();
+      }
+    });
+
+    es.addEventListener("ping", function(){ /* keepalive */ });
+
+    es.onerror = function(){
+      es.close();
+      clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(connect, 5000);
+    };
+  }
+
+  // Show small indicator when someone else made a change
+  function showLiveBadge(who){
+    var b = document.getElementById("_livebadge");
+    if(!b){
+      b = document.createElement("div");
+      b.id = "_livebadge";
+      b.style.cssText = "position:fixed;bottom:24px;left:24px;background:#252d42;border:1px solid #3d4760;color:#8892a4;padding:8px 14px;border-radius:8px;font-size:12px;z-index:998;transition:opacity .3s";
+      document.body.appendChild(b);
+    }
+    b.textContent = "🟢 " + who + " обновил данные";
+    b.style.opacity = "1";
+    clearTimeout(b._t);
+    b._t = setTimeout(function(){ b.style.opacity = "0"; }, 3000);
+  }
+
+  // Also expose for pages that need it
+  window._liveShowBadge = showLiveBadge;
+
+  connect();
+})();
+</script>

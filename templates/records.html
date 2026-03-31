@@ -1,0 +1,205 @@
+{% extends "base.html" %}
+{% block title %}Учёт расхода картриджей{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <div class="page-title">📋 Учёт расхода картриджей</div>
+    <div class="page-sub">Ввод фактического расхода по месяцам</div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <a id="xlsxBtn" href="#" class="btn btn-outline btn-sm" style="text-decoration:none">📊 Excel</a>
+    <a id="printBtn" href="#" class="btn btn-outline btn-sm" style="text-decoration:none" target="_blank">🖨️ Печать</a>
+  </div>
+</div>
+
+<div class="content">
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
+    <label style="font-size:11px;color:var(--muted);font-weight:500">Год:</label>
+    <select class="year-select" id="yearSel" onchange="load();updateLinks()"></select>
+    <label style="font-size:11px;color:var(--muted);font-weight:500">Этаж:</label>
+    <select class="year-select" id="floorSel" onchange="load()">
+      <option value="">Все</option>
+    </select>
+    <label style="font-size:11px;color:var(--muted);font-weight:500">Месяц:</label>
+    <select class="year-select" id="monthSel" onchange="renderTable()">
+      <option value="all">Все месяцы</option>
+      {% for m in months %}<option value="{{ loop.index0 }}">{{ m }}</option>{% endfor %}
+    </select>
+    <span id="totalBadge" style="margin-left:auto;font-size:12px;color:var(--muted);font-weight:500"></span>
+  </div>
+
+  <div class="card" style="padding:0">
+    <div id="tableWrap" style="overflow-x:auto;overflow-y:auto;max-height:calc(100vh - 175px)"></div>
+  </div>
+</div>
+
+<div id="toast" style="display:none;position:fixed;bottom:24px;right:24px;background:var(--green);color:#fff;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.15)"></div>
+
+<style>
+/* ── Table header sticky ─────────────────── */
+#tableWrap th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface2);
+}
+/* ── Floor separator ─────────────────────── */
+.floor-sep td {
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--border);
+}
+</style>
+
+<script>
+const MONTHS = {{ months | tojson }};
+const MO = MONTHS.map(m=>m.slice(0,3));
+const ROLE = "{{ session.get('role') }}";
+const FC = ["#007AFF","#34C759","#FF9500","#FF6B35","#AF52DE","#30B0C7","#5AC8FA","#FF9F0A"];
+let DATA = [], ST;
+
+const ySel = document.getElementById("yearSel");
+const cur = new Date().getFullYear();
+for(let y=cur+1;y>=cur-3;y--){
+  const o=document.createElement("option");o.value=y;o.textContent=y;
+  if(y===cur)o.selected=true; ySel.appendChild(o);
+}
+
+fetch("/api/floors").then(r=>r.json()).then(floors=>{
+  const sel=document.getElementById("floorSel");
+  floors.forEach(f=>{const o=document.createElement("option");o.value=f;o.textContent=f;sel.appendChild(o);});
+});
+
+function fmt(n){return new Intl.NumberFormat("ru-RU").format(Math.round(n))}
+function updateLinks(){
+  const y=ySel.value;
+  document.getElementById("xlsxBtn").href="/export/excel/records?year="+y;
+  document.getElementById("printBtn").href="/export/print/records?year="+y;
+}
+
+function load(){
+  updateLinks();
+  const year=ySel.value, floor=document.getElementById("floorSel").value;
+  fetch(`/api/records?year=${year}&floor=${encodeURIComponent(floor)}`)
+    .then(r=>r.json()).then(d=>{ DATA=d; renderTable(); });
+}
+
+function renderTable(){
+  const ms = document.getElementById("monthSel").value;
+  const single = ms!=="all" ? parseInt(ms) : null;
+  const canEdit = ROLE!=="viewer";
+  const cols = single!==null ? [single] : [...Array(12).keys()];
+
+  let h = `<table><thead><tr>
+    <th style="text-align:left;padding-left:10px;min-width:22px">#</th>
+    <th style="text-align:left;min-width:68px">Этаж</th>
+    <th style="text-align:left;min-width:130px">Помещение</th>
+    <th style="text-align:left;min-width:95px">Модель</th>
+    <th style="text-align:left;min-width:58px">Картридж</th>
+    <th style="min-width:44px">Цена</th>
+    ${cols.map(i=>`<th style="text-align:center;width:52px;min-width:52px">${single!==null?MONTHS[i]:MO[i]}</th>`).join("")}
+    <th style="text-align:center;min-width:52px;color:var(--green)">Итого</th>
+    <th style="text-align:right;min-width:80px;color:var(--accent);padding-right:10px">Сумма</th>
+  </tr></thead><tbody>`;
+
+  let prevFloor=null, tq=0, tc=0;
+
+  DATA.forEach((p,idx)=>{
+    if(p.floor!==prevFloor){
+      prevFloor=p.floor;
+      h+=`<tr class="floor-sep"><td colspan="${6+cols.length+2}">▸ ${p.floor}</td></tr>`;
+    }
+    tq+=p.total_qty; tc+=p.total_cost;
+    const fc = FC[parseInt(p.floor)-1] || FC[0];
+
+    h += `<tr data-pid="${p.id}" data-price="${p.price}">
+      <td style="color:var(--muted);font-size:10px;text-align:center">${idx+1}</td>
+      <td><span class="floor-badge" style="background:${fc}18;color:${fc}">${p.floor}</span></td>
+      <td style="max-width:145px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px" title="${p.dept}">${p.dept}</td>
+      <td style="color:var(--muted);font-size:11px;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.model}">${p.model}</td>
+      <td><code>${p.cartridge}</code></td>
+      <td style="text-align:center;color:var(--muted);font-size:11px;white-space:nowrap">${p.price} ₽</td>
+      ${cols.map(mi=>{
+        const v = p.monthly[mi]||0;
+        if(!canEdit)
+          return `<td style="text-align:center;color:${v>0?'var(--green)':'var(--border2)'};font-weight:${v>0?600:400};font-size:13px">${v||"—"}</td>`;
+        return `<td style="padding:4px 3px;text-align:center">
+          <input type="number" min="0" class="qty-input${v>0?' has-val':''}"
+            data-month="${mi}" value="${v||""}" placeholder="—"
+            oninput="liveUpdate(this,${p.id})"
+            onchange="save(${p.id},${mi},this)">
+        </td>`;
+      }).join("")}
+      <td class="row-total" style="text-align:center;font-weight:600;font-size:13px;color:${p.total_qty>0?'var(--green)':'var(--muted)'}">${p.total_qty||"—"}</td>
+      <td class="row-cost" style="text-align:right;font-weight:600;font-size:12px;color:${p.total_cost>0?'var(--accent)':'var(--muted)'};padding-right:10px">${p.total_cost>0?fmt(p.total_cost)+" ₽":"—"}</td>
+    </tr>`;
+  });
+
+  h += `</tbody><tfoot><tr>
+    <td colspan="${6+cols.length}" style="text-align:right;color:var(--muted);font-size:11px;padding-right:10px;letter-spacing:.3px">ИТОГО:</td>
+    <td id="footTotal" style="text-align:center;color:var(--green);font-weight:700;font-size:14px">${tq} шт.</td>
+    <td id="footCost"  style="text-align:right;color:var(--accent);font-weight:700;padding-right:10px;font-size:13px">${fmt(tc)} ₽</td>
+  </tr></tfoot></table>`;
+
+  document.getElementById("tableWrap").innerHTML = h;
+  updateBadge();
+}
+
+function liveUpdate(input, pid){
+  const row   = input.closest("tr");
+  const price = parseInt(row.dataset.price) || 0;
+  const inputs = row.querySelectorAll(".qty-input");
+  let rowQty = 0;
+  inputs.forEach(inp => { rowQty += parseInt(inp.value)||0; });
+  const rowCost = rowQty * price;
+
+  input.className = "qty-input" + (parseInt(input.value)>0 ? " has-val" : "");
+
+  const tdTotal = row.querySelector(".row-total");
+  const tdCost  = row.querySelector(".row-cost");
+  tdTotal.textContent = rowQty || "—";
+  tdTotal.style.color = rowQty>0 ? "var(--green)" : "var(--muted)";
+  tdCost.textContent  = rowCost>0 ? fmt(rowCost)+" ₽" : "—";
+  tdCost.style.color  = rowCost>0 ? "var(--accent)" : "var(--muted)";
+
+  const month = parseInt(input.dataset.month);
+  const p = DATA.find(x=>x.id===pid);
+  if(p){ p.monthly[month]=parseInt(input.value)||0; p.total_qty=rowQty; p.total_cost=rowCost; }
+
+  const gQty  = DATA.reduce((s,x)=>s+x.total_qty,0);
+  const gCost = DATA.reduce((s,x)=>s+x.total_cost,0);
+  const ft = document.getElementById("footTotal");
+  const fc = document.getElementById("footCost");
+  if(ft) ft.textContent = gQty+" шт.";
+  if(fc) fc.textContent = fmt(gCost)+" ₽";
+  updateBadge();
+}
+
+function save(pid, month, input){
+  const qty  = parseInt(input.value)||0;
+  const year = parseInt(ySel.value);
+  fetch("/api/records",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({printer_id:pid,year,month,qty})
+  }).then(r=>r.json()).then(d=>{ if(d.ok) showToast("Сохранено ✓"); });
+}
+
+function updateBadge(){
+  const tq=DATA.reduce((s,x)=>s+x.total_qty,0);
+  const tc=DATA.reduce((s,x)=>s+x.total_cost,0);
+  document.getElementById("totalBadge").textContent=
+    `${DATA.length} принт. · ${tq} шт. · ${fmt(tc)} ₽`;
+}
+
+function showToast(msg){
+  const t=document.getElementById("toast");t.textContent=msg;t.style.display="block";
+  clearTimeout(ST);ST=setTimeout(()=>t.style.display="none",2200);
+}
+
+load();
+</script>
+{% endblock %}

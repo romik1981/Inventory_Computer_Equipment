@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Аналитика{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div><div class="page-title">📈 Аналитика</div><div class="page-sub">Детальный анализ расхода расходных материалов</div></div>
+  <select class="year-select" id="yearSel" onchange="load()"></select>
+</div>
+<div class="content">
+
+  <div class="two-col">
+    <!-- Plan vs Fact -->
+    <div class="card">
+      <div class="card-title">План vs Факт по месяцам (₽)</div>
+      <div style="display:flex;gap:12px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:6px"><div style="width:12px;height:12px;background:#f5a62344;border:1px solid #f5a623;border-radius:2px"></div><span style="font-size:11px;color:var(--muted)">План</span></div>
+        <div style="display:flex;align-items:center;gap:6px"><div style="width:12px;height:12px;background:var(--green);border-radius:2px"></div><span style="font-size:11px;color:var(--muted)">Факт (норма)</span></div>
+        <div style="display:flex;align-items:center;gap:6px"><div style="width:12px;height:12px;background:var(--red);border-radius:2px"></div><span style="font-size:11px;color:var(--muted)">Факт (превышение)</span></div>
+      </div>
+      <div class="bar-chart" id="planFactChart"></div>
+    </div>
+
+    <!-- By dept -->
+    <div class="card">
+      <div class="card-title">Топ отделов по затратам</div>
+      <div id="deptBars"></div>
+    </div>
+  </div>
+
+  <!-- By cartridge -->
+  <div class="card">
+    <div class="card-title">Расход по типам картриджей</div>
+    <div class="table-wrap">
+      <table id="cartTable">
+        <thead><tr><th>#</th><th>Картридж</th><th>Выдано шт.</th><th>Затраты ₽</th><th>Доля</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+<script>
+const MONTHS = {{ months | tojson }};
+const MO = MONTHS.map(m=>m.slice(0,3));
+
+const ySel=document.getElementById("yearSel");
+const cur=new Date().getFullYear();
+for(let y=cur+1;y>=cur-3;y--){const o=document.createElement("option");o.value=y;o.textContent=y;if(y===cur)o.selected=true;ySel.appendChild(o);}
+
+function fmt(n){return new Intl.NumberFormat("ru-RU").format(Math.round(n))}
+
+function load(){
+  fetch(`/api/analytics?year=${ySel.value}`).then(r=>r.json()).then(d=>{
+
+    // Plan vs fact bars
+    const plan = d.monthly_plan;
+    const maxV = Math.max(plan*1.4, ...d.monthly_fact, 1);
+    const pfEl = document.getElementById("planFactChart");
+    pfEl.innerHTML = MO.map((m,i)=>{
+      const fact=d.monthly_fact[i];
+      const over=fact>plan;
+      return `<div class="bar-col">
+        <div class="bar-val" style="font-size:8px">${fact>0?fmt(fact):""}</div>
+        <div style="display:flex;align-items:flex-end;gap:2px;height:80px">
+          <div style="width:12px;background:rgba(245,166,35,.25);border:1px solid rgba(245,166,35,.5);border-radius:2px 2px 0 0;height:${Math.max(2,(plan/maxV)*78)}px"></div>
+          <div style="width:12px;background:${over?'var(--red)':'var(--green)'};border-radius:2px 2px 0 0;height:${Math.max(2,(fact/maxV)*78)}px;opacity:.9"></div>
+        </div>
+        <div class="bar-lbl">${m}</div>
+      </div>`;
+    }).join("");
+
+    // Dept bars
+    const depts=d.by_dept;
+    const maxDeptCost=Math.max(...depts.map(x=>x.cost),1);
+    document.getElementById("deptBars").innerHTML = depts.map((dep,i)=>`
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <div style="width:170px;font-size:11px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${dep.dept}">${dep.dept}</div>
+        <div class="progress-bar" style="flex:1"><div class="progress-fill" style="width:${(dep.cost/maxDeptCost*100).toFixed(1)}%;background:hsl(${195+i*12},70%,55%)"></div></div>
+        <div style="width:45px;text-align:right;font-size:11px;color:var(--muted)">${dep.qty} шт.</div>
+        <div style="width:80px;text-align:right;font-size:12px;color:var(--accent);font-weight:600">${fmt(dep.cost)} ₽</div>
+      </div>`).join("");
+
+    // Cartridge table
+    const totalCost=d.by_cartridge.reduce((s,x)=>s+x.cost,0)||1;
+    const tbody=document.querySelector("#cartTable tbody");
+    tbody.innerHTML = d.by_cartridge.map((c,i)=>`<tr>
+      <td style="color:var(--muted)">${i+1}</td>
+      <td><code>${c.cartridge}</code></td>
+      <td style="color:var(--green)">${c.qty||0}</td>
+      <td style="color:var(--accent);font-weight:600">${fmt(c.cost||0)} ₽</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="progress-bar" style="width:120px"><div class="progress-fill" style="width:${((c.cost||0)/totalCost*100).toFixed(1)}%;background:hsl(${210+i*10},70%,60%)"></div></div>
+          <span style="font-size:11px;color:var(--muted)">${((c.cost||0)/totalCost*100).toFixed(1)}%</span>
+        </div>
+      </td>
+    </tr>`).join("");
+  });
+}
+load();
+</script>
+{% endblock %}

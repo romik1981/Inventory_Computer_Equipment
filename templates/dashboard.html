@@ -1,0 +1,340 @@
+{% extends "base.html" %}
+{% block title %}Дэшборд — КартриджУчёт{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <div class="page-title">📊 Дэшборд</div>
+    <div class="page-sub">Общая картина расхода расходных материалов</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px">
+    <label style="font-size:12px;color:var(--muted);font-weight:600">Год:</label>
+    <select class="year-select" id="yearSel" onchange="load()"></select>
+  </div>
+</div>
+<div class="content">
+
+  <!-- ── Основные карточки ── -->
+  <div class="stat-grid">
+    <div class="stat-card" style="--c:#3B6FF0"><div class="stat-num" id="sSpent">—</div><div class="stat-label">Фактические затраты</div></div>
+    <div class="stat-card" style="--c:#16A34A"><div class="stat-num" id="sItems">—</div><div class="stat-label">Выдано картриджей</div></div>
+    <div class="stat-card" style="--c:#D97706"><div class="stat-num" id="sExpected">—</div><div class="stat-label">Плановый расход / год</div></div>
+    <div class="stat-card" style="--c:#7C3AED"><div class="stat-num" id="sPrinters">—</div><div class="stat-label">Принтеров на учёте</div></div>
+  </div>
+
+  <!-- ── Дополнительные карточки ── -->
+  <div class="stat-grid" style="margin-top:-4px">
+    <div class="stat-card" style="--c:#0891B2"><div class="stat-num" id="sForecast">—</div><div class="stat-label">Прогноз на год</div></div>
+    <div class="stat-card" style="--c:#6B7280"><div class="stat-num" id="sPrevYear">—</div><div class="stat-label">Прошлый год (факт)</div></div>
+    <div class="stat-card" style="--c:#16A34A"><div class="stat-num" id="sAvgMonth">—</div><div class="stat-label">Средний месяц</div></div>
+    <div class="stat-card" style="--c:#DC2626"><div class="stat-num" id="sPlanPct">—</div><div class="stat-label">Выполнение плана</div></div>
+  </div>
+
+  <!-- ── Графики по месяцам ── -->
+  <div class="two-col">
+    <div class="card">
+      <div class="card-title">Расход по месяцам (шт.)</div>
+      <div class="bar-chart" id="chartQty"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Затраты по месяцам (₽)</div>
+      <div class="bar-chart" id="chartCost"></div>
+    </div>
+  </div>
+
+  <!-- ── По этажам ── -->
+  <div class="card">
+    <div class="card-title">Расход по этажам</div>
+    <div id="floorBars"></div>
+  </div>
+
+  <!-- ── По помещениям (инфографика + список) ── -->
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px">
+      <div class="card-title" style="margin-bottom:0">Расход по помещениям</div>
+      <button class="btn btn-outline btn-sm" id="deptToggleBtn" onclick="toggleDeptDetail()">📋 Показать списком</button>
+    </div>
+    <!-- Инфографика -->
+    <div id="deptBarsWrap">
+      <div id="deptBars"></div>
+    </div>
+    <!-- Детальный список (скрыт по умолчанию) -->
+    <div id="deptTableWrap" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
+      <div class="table-wrap">
+        <table id="deptTable">
+          <thead>
+            <tr>
+              <th>Этаж</th>
+              <th>Помещение / Отдел</th>
+              <th>Принтеров</th>
+              <th>Выдано шт.</th>
+              <th>Затраты ₽</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── ТОП принтеров ── -->
+  <div class="card">
+    <div class="card-title">ТОП-7 принтеров по расходу картриджей</div>
+    <div class="table-wrap">
+      <table id="topPrintersTable">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Модель</th>
+            <th>Картридж</th>
+            <th>Помещение</th>
+            <th>Этаж</th>
+            <th>Выдано шт.</th>
+            <th>Затраты ₽</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Анализ Windows 11 ── -->
+  <div class="card" id="win11Card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:13px">
+      <div class="card-title" style="margin-bottom:0">Совместимость техники с Windows 11</div>
+      <button class="btn btn-outline btn-sm" id="win11ToggleBtn" onclick="toggleWin11Detail()">📋 Показать список</button>
+    </div>
+    <div id="win11Summary"></div>
+    <div id="win11TableWrap" style="display:none;margin-top:14px;border-top:1px solid var(--border);padding-top:14px">
+      <div class="filters" style="margin-bottom:10px">
+        <button class="btn btn-sm" id="wf_all" onclick="filterWin11('all')" style="background:var(--accent);color:#fff;border-color:var(--accent)">Все</button>
+        <button class="btn btn-outline btn-sm" id="wf_incompatible" onclick="filterWin11('incompatible')">Несовместимы</button>
+        <button class="btn btn-outline btn-sm" id="wf_needs_upgrade" onclick="filterWin11('needs_upgrade')">Нужен апгрейд RAM</button>
+        <button class="btn btn-outline btn-sm" id="wf_compatible" onclick="filterWin11('compatible')">Совместимы</button>
+        <button class="btn btn-outline btn-sm" id="wf_unknown" onclick="filterWin11('unknown')">Не определено</button>
+      </div>
+      <div class="table-wrap">
+        <table id="win11Table">
+          <thead>
+            <tr>
+              <th>Статус</th>
+              <th>Этаж</th>
+              <th>Отдел</th>
+              <th>Ответственный</th>
+              <th>IP</th>
+              <th>Процессор</th>
+              <th>RAM</th>
+              <th>ОС</th>
+              <th>Примечание</th>
+            </tr>
+          </thead>
+          <tbody id="win11Tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+const FLOOR_COLORS=["#3B6FF0","#16A34A","#D97706","#F0883E","#7C3AED","#0891B2","#DB2777","#65A30D"];
+const FLOORS=["1 этаж","2 этаж","3 этаж","4 этаж","5 этаж","6 этаж","7 этаж","8 этаж"];
+const ySel=document.getElementById("yearSel");
+const cur=new Date().getFullYear();
+for(let y=cur+1;y>=cur-3;y--){const o=document.createElement("option");o.value=y;o.textContent=y;if(y===cur)o.selected=true;ySel.appendChild(o);}
+function fmt(n){return new Intl.NumberFormat("ru-RU").format(Math.round(n))}
+function renderBar(id,data,color,showVal){
+  const el=document.getElementById(id);
+  const max=Math.max(...data.map(d=>d.v),1);
+  el.innerHTML=data.map(d=>`<div class="bar-col">
+    <div class="bar-val">${d.v>0?(showVal?fmt(d.v):d.v):""}</div>
+    <div class="bar-track" style="height:80px"><div class="bar-fill" style="background:${color};height:${Math.max(2,(d.v/max)*78)}px"></div></div>
+    <div class="bar-lbl">${d.k}</div></div>`).join("");
+}
+
+// ── Переключатель: инфографика / список ──────────────────────────────────────
+let deptDetailVisible = false;
+function toggleDeptDetail(){
+  deptDetailVisible = !deptDetailVisible;
+  document.getElementById("deptBarsWrap").style.display = deptDetailVisible ? "none" : "";
+  document.getElementById("deptTableWrap").style.display = deptDetailVisible ? "" : "none";
+  document.getElementById("deptToggleBtn").textContent = deptDetailVisible ? "📊 Показать инфографику" : "📋 Показать списком";
+}
+
+let win11DetailVisible = false;
+let win11AllData = [];
+function toggleWin11Detail(){
+  win11DetailVisible = !win11DetailVisible;
+  document.getElementById("win11TableWrap").style.display = win11DetailVisible ? "" : "none";
+  document.getElementById("win11ToggleBtn").textContent = win11DetailVisible ? "📊 Скрыть список" : "📋 Показать список";
+}
+
+function filterWin11(status){
+  ["all","incompatible","needs_upgrade","compatible","unknown"].forEach(s=>{
+    const btn = document.getElementById("wf_"+s);
+    if(btn){ btn.style.background=s===status?"var(--accent)":""; btn.style.color=s===status?"#fff":""; btn.className = s===status ? "btn btn-sm" : "btn btn-outline btn-sm"; btn.style.borderColor=s===status?"var(--accent)":""; }
+  });
+  const data = status==="all" ? win11AllData : win11AllData.filter(d=>d.status===status);
+  renderWin11Table(data);
+}
+
+const WIN11_STATUS = {
+  compatible:    {label:"Совместим",     cls:"tag-green"},
+  needs_upgrade: {label:"Нужен апгрейд", cls:"tag-orange"},
+  incompatible:  {label:"Несовместим",   cls:"tag-red"},
+  unknown:       {label:"Не определено", cls:"tag-gray"},
+};
+
+function renderWin11Table(data){
+  const tbody = document.getElementById("win11Tbody");
+  if(!data.length){tbody.innerHTML='<tr><td colspan="9" class="empty">Нет записей</td></tr>';return;}
+  tbody.innerHTML = data.map(d=>{
+    const s = WIN11_STATUS[d.status]||WIN11_STATUS.unknown;
+    return `<tr>
+      <td><span class="tag ${s.cls}">${s.label}</span></td>
+      <td style="color:var(--muted);font-size:11px">${d.floor||"—"}</td>
+      <td style="font-size:11px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${d.dept}">${d.dept||"—"}</td>
+      <td style="font-size:11px">${d.responsible||"—"}</td>
+      <td><code>${d.pc_ip||"—"}</code></td>
+      <td style="font-size:10px;color:var(--text2);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${d.cpu}">${d.cpu||"—"}</td>
+      <td style="font-size:11px">${d.ram||"—"}</td>
+      <td style="font-size:11px">${d.pc_os||"—"}</td>
+      <td style="font-size:10px;color:var(--muted)">${d.reason}</td>
+    </tr>`;
+  }).join("");
+}
+
+// ── Основная загрузка данных ─────────────────────────────────────────────────
+function load(){
+  const year = ySel.value;
+
+  fetch("/api/stats?year="+year).then(r=>r.json()).then(d=>{
+
+    // Основные карточки
+    document.getElementById("sSpent").textContent = fmt(d.total_spent)+" ₽";
+    document.getElementById("sItems").textContent = d.total_items+" шт.";
+    document.getElementById("sExpected").textContent = fmt(d.expected_annual)+" ₽";
+    document.getElementById("sPrinters").textContent = d.printer_count;
+
+    // Дополнительные карточки
+    document.getElementById("sForecast").textContent = fmt(d.forecast)+" ₽";
+    document.getElementById("sPrevYear").textContent = d.prev_year_spent > 0 ? fmt(d.prev_year_spent)+" ₽" : "—";
+    document.getElementById("sAvgMonth").textContent = d.avg_month > 0 ? fmt(d.avg_month)+" ₽" : "—";
+    const planPct = d.expected_annual > 0 ? (d.total_spent / d.expected_annual * 100).toFixed(1) : 0;
+    const planEl = document.getElementById("sPlanPct");
+    planEl.textContent = planPct+"%";
+    planEl.parentElement.style.setProperty("--c", planPct > 100 ? "#DC2626" : planPct > 75 ? "#D97706" : "#16A34A");
+
+    // Графики по месяцам
+    const MO = d.months.map(m=>m.slice(0,3));
+    renderBar("chartQty", d.by_month.map((m,i)=>({k:MO[i],v:m.qty})), "#3B6FF0", false);
+    renderBar("chartCost", d.by_month.map((m,i)=>({k:MO[i],v:m.cost})), "#16A34A", true);
+
+    // По этажам
+    const maxCost = Math.max(...Object.values(d.by_floor).map(x=>x.cost), 1);
+    document.getElementById("floorBars").innerHTML = FLOORS.map((fl,i)=>{
+      const fd = d.by_floor[fl]||{qty:0,cost:0};
+      const pct = (fd.cost/maxCost*100).toFixed(1);
+      const c = FLOOR_COLORS[i%FLOOR_COLORS.length];
+      return `<div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <div style="width:80px;font-size:12px;color:var(--text2);font-weight:600">${fl}</div>
+        <div class="progress-bar" style="flex:1"><div class="progress-fill" style="width:${pct}%;background:${c}"></div></div>
+        <div style="width:50px;text-align:right;font-size:12px;color:var(--text);font-weight:600">${fd.qty} шт.</div>
+        <div style="width:90px;text-align:right;font-size:12px;color:${c};font-weight:700">${fmt(fd.cost)} ₽</div>
+      </div>`;
+    }).join("");
+
+    // По помещениям — инфографика
+    const depts = d.by_dept;
+    const maxDeptCost = Math.max(...depts.map(x=>x.cost), 1);
+    const DEPT_COLORS = ["#3B6FF0","#16A34A","#D97706","#7C3AED","#0891B2","#DB2777","#F0883E","#65A30D","#EF4444","#8B5CF6"];
+    document.getElementById("deptBars").innerHTML = depts.map((dep, i)=>{
+      const pct = (dep.cost / maxDeptCost * 100).toFixed(1);
+      const c = DEPT_COLORS[i % DEPT_COLORS.length];
+      const hasData = dep.qty > 0;
+      return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:9px;opacity:${hasData?1:0.45}">
+        <div style="width:14px;height:14px;border-radius:3px;background:${c};flex-shrink:0"></div>
+        <div style="width:140px;font-size:11px;color:var(--text);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${dep.dept}">${dep.dept}</div>
+        <div style="font-size:9px;color:var(--muted);width:55px;flex-shrink:0">${dep.floor}</div>
+        <div class="progress-bar" style="flex:1"><div class="progress-fill" style="width:${pct}%;background:${c}"></div></div>
+        <div style="width:40px;text-align:right;font-size:11px;color:var(--text2);font-weight:600">${dep.qty} шт.</div>
+        <div style="width:80px;text-align:right;font-size:12px;color:${c};font-weight:700">${fmt(dep.cost)} ₽</div>
+      </div>`;
+    }).join("") || '<div class="empty">Нет данных о расходе</div>';
+
+    // По помещениям — таблица
+    const tbody = document.querySelector("#deptTable tbody");
+    tbody.innerHTML = depts.map(dep=>`<tr>
+      <td style="color:var(--muted);font-size:11px">${dep.floor}</td>
+      <td style="font-weight:600">${dep.dept}</td>
+      <td style="text-align:center;color:var(--muted)">${dep.printer_count}</td>
+      <td style="color:var(--green);font-weight:700;text-align:center">${dep.qty}</td>
+      <td style="color:var(--accent);font-weight:700;text-align:right">${fmt(dep.cost)} ₽</td>
+    </tr>`).join("") || '<tr><td colspan="5" class="empty">Нет данных</td></tr>';
+
+    // ТОП принтеров
+    const tp = d.top_printers;
+    const topTbody = document.querySelector("#topPrintersTable tbody");
+    topTbody.innerHTML = tp.map((p,i)=>{
+      const medalColors = ["#F59E0B","#9CA3AF","#CD7F32"];
+      const medal = i < 3 ? `<span style="color:${medalColors[i]};font-weight:800">${["🥇","🥈","🥉"][i]}</span>` : `<span style="color:var(--muted)">${i+1}</span>`;
+      return `<tr>
+        <td style="text-align:center">${medal}</td>
+        <td style="font-weight:600">${p.model}</td>
+        <td><code>${p.cartridge}</code></td>
+        <td style="font-size:11px;color:var(--text2)">${p.dept}</td>
+        <td style="font-size:11px;color:var(--muted)">${p.floor}</td>
+        <td style="color:var(--green);font-weight:700;text-align:center">${p.qty}</td>
+        <td style="color:var(--accent);font-weight:700;text-align:right">${fmt(p.cost)} ₽</td>
+      </tr>`;
+    }).join("") || '<tr><td colspan="7" class="empty">Нет данных за выбранный год</td></tr>';
+  });
+
+  // Анализ Win11 (не зависит от года)
+  fetch("/api/equipment/win11").then(r=>r.json()).then(w=>{
+    win11AllData = w.details;
+    const total = w.total || 1;
+    const bars = [
+      {key:"compatible",    label:"Совместимы",        count:w.compatible,    color:"var(--green)",  bg:"var(--green-l)"},
+      {key:"needs_upgrade", label:"Нужен апгрейд RAM", count:w.needs_upgrade, color:"var(--orange)", bg:"var(--orange-l)"},
+      {key:"incompatible",  label:"Несовместимы",      count:w.incompatible,  color:"var(--red)",    bg:"var(--red-l)"},
+      {key:"unknown",       label:"Не определено",     count:w.unknown,       color:"var(--muted)",  bg:"var(--surface2)"},
+    ];
+
+    // Подсчёт причин несовместимости
+    const reasonCount = {};
+    w.details.filter(d=>d.status==="incompatible"||d.status==="needs_upgrade").forEach(d=>{
+      reasonCount[d.reason] = (reasonCount[d.reason]||0) + 1;
+    });
+    const reasonsSorted = Object.entries(reasonCount).sort((a,b)=>b[1]-a[1]);
+
+    const reasonsHtml = reasonsSorted.length ? `
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <div style="font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--muted);margin-bottom:8px">Причины несовместимости / апгрейда</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${reasonsSorted.map(([reason, cnt])=>`
+            <div style="background:var(--red-l);border:1px solid #fecaca;border-radius:6px;padding:4px 10px;display:flex;align-items:center;gap:6px">
+              <span style="font-size:18px;font-weight:800;color:var(--red);min-width:20px;text-align:center">${cnt}</span>
+              <span style="font-size:11px;color:var(--text2)">${reason}</span>
+            </div>`).join("")}
+        </div>
+      </div>` : "";
+
+    document.getElementById("win11Summary").innerHTML = `
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px">
+        ${bars.map(b=>`
+          <div style="flex:1;min-width:130px;background:${b.bg};border-radius:8px;padding:12px 14px;border:1px solid ${b.color}22;cursor:pointer" onclick="filterWin11('${b.key}');if(!win11DetailVisible)toggleWin11Detail()">
+            <div style="font-size:22px;font-weight:800;color:${b.color}">${b.count}</div>
+            <div style="font-size:10px;color:${b.color};font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-top:2px">${b.label}</div>
+            <div style="font-size:10px;color:var(--muted);margin-top:4px">${((b.count/total)*100).toFixed(0)}% от парка</div>
+          </div>`).join("")}
+      </div>
+      ${reasonsHtml}
+      <div style="font-size:11px;color:var(--muted);margin-top:10px">Всего ПК в учёте: <strong>${total}</strong>. Анализ по CPU и RAM. Для точной совместимости проверьте TPM 2.0 вручную.</div>
+    `;
+    renderWin11Table(win11AllData);
+  });
+}
+
+load();
+</script>
+{% endblock %}

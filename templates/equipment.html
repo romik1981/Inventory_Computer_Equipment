@@ -1,0 +1,626 @@
+{% extends "base.html" %}
+{% block title %}Учёт техники{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div><div class="page-title">💻 Учёт техники (v2)</div><div class="page-sub">ПК, мониторы, периферия — полный реестр оборудования</div></div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <input id="searchInput" placeholder="🔍 Поиск..." oninput="filterAndRender()"
+      style="background:#0d1019;border:1px solid var(--border);color:var(--text);padding:7px 12px;border-radius:6px;font-family:var(--font);font-size:13px;outline:none;width:180px">
+    <select id="floorFilter" class="year-select" onchange="filterAndRender()"><option value="">Все этажи</option></select>
+    <select id="deptFilter"  class="year-select" onchange="filterAndRender()"><option value="">Все отделы</option></select>
+    <select id="statusFilter" class="year-select" onchange="filterAndRender()">
+      <option value="">Все статусы</option>
+      <option value="active">Активно</option>
+      <option value="repair">В ремонте</option>
+      <option value="storage">На хранении</option>
+      <option value="written_off">Списано</option>
+    </select>
+    <a href="/export/excel/equipment" class="btn btn-outline btn-sm" style="text-decoration:none">📊 Excel</a>
+    <a href="/export/print/equipment" class="btn btn-outline btn-sm" style="text-decoration:none" target="_blank">🖨️ Печать</a>
+    {% if session.get('role')=='admin' %}
+    <button class="btn btn-green" onclick="openAdd()">+ Добавить ПК</button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="content">
+  <!-- Stats -->
+  <div class="stat-grid" style="grid-template-columns:repeat(6,1fr);margin-bottom:16px">
+    <div class="stat-card" style="--c:#4f7ef8"><div class="stat-num" id="sTotal">—</div><div class="stat-label">Всего единиц</div></div>
+    <div class="stat-card" style="--c:#3ecf7a"><div class="stat-num" id="sActive">—</div><div class="stat-label">Активно</div></div>
+    <div class="stat-card" style="--c:#f0504a"><div class="stat-num" id="sRepair">—</div><div class="stat-label">В ремонте</div></div>
+    <div class="stat-card" style="--c:#8892a4"><div class="stat-num" id="sStorage">—</div><div class="stat-label">На хранении</div></div>
+    <div class="stat-card" style="--c:#f5a623"><div class="stat-num" id="sWarranty">—</div><div class="stat-label">Гарантия истекает</div></div>
+    <div class="stat-card" style="--c:#3ecf7a;cursor:pointer" onclick="toggleNoAv()" title="Нажмите чтобы увидеть список без антивируса">
+      <div class="stat-num" id="sAv">—</div>
+      <div class="stat-label">Защищено АВ</div>
+      <div style="font-size:10px;color:var(--red);margin-top:4px" id="sNoAv"></div>
+    </div>
+  </div>
+
+  <div id="warrantyAlert" class="alert alert-error" style="display:none"></div>
+
+  <!-- Antivirus panel: two columns -->
+  <div id="noAvPanel" style="display:none;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+      <strong style="font-size:13px">🛡️ Антивирусная защита (активные ПК)</strong>
+      <button onclick="toggleNoAv()" style="background:none;border:none;color:var(--muted);cursor:pointer;font-size:18px;line-height:1">✕</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+      <div>
+        <div style="font-size:10px;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">⚠ Без антивируса</div>
+        <div id="noAvList" style="display:flex;flex-direction:column;gap:3px"></div>
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">✓ Защищены</div>
+        <div id="withAvList" style="display:flex;flex-direction:column;gap:3px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- View toggle -->
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+    <div id="countBadge" style="font-size:12px;color:var(--muted)"></div>
+    <div style="display:flex;gap:6px">
+      <button id="viewTable" class="btn btn-primary btn-sm" onclick="setView('table')">☰ Таблица</button>
+      <button id="viewCards" class="btn btn-outline btn-sm" onclick="setView('cards')">⊞ Карточки</button>
+    </div>
+  </div>
+
+  <!-- Table view -->
+  <div id="tableView" class="card" style="padding:0">
+    <div class="table-wrap" style="overflow-x:hidden"><table style="width:100%">
+      <thead><tr id="tableHead">
+      </tr></thead>
+      <tbody id="tableBody"></tbody>
+    </table></div>
+  </div>
+
+  <!-- Cards view -->
+  <div id="cardsView" style="display:none">
+    <div id="cardsBody" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px"></div>
+  </div>
+</div>
+
+<!-- ═══════════════ ADD/EDIT MODAL ═══════════════ -->
+<div class="modal-overlay" id="editModal">
+<div class="modal" style="width:700px;max-height:90vh;overflow-y:auto">
+  <div class="modal-title" id="editTitle">Добавить рабочее место</div>
+  <input type="hidden" id="eId">
+
+  <!-- Tabs -->
+  <div style="display:flex;gap:2px;margin-bottom:20px;border-bottom:1px solid var(--border);padding-bottom:0">
+    <button class="tab-btn active" onclick="switchTab('location')" id="tab_location" style="padding:8px 14px;background:transparent;border:none;color:var(--accent);font-family:var(--font);font-size:12px;cursor:pointer;border-bottom:2px solid var(--accent)">📍 Размещение</button>
+    <button class="tab-btn" onclick="switchTab('pc')" id="tab_pc" style="padding:8px 14px;background:transparent;border:none;color:var(--muted);font-family:var(--font);font-size:12px;cursor:pointer;border-bottom:2px solid transparent">🖥️ ПК</button>
+    <button class="tab-btn" onclick="switchTab('periph')" id="tab_periph" style="padding:8px 14px;background:transparent;border:none;color:var(--muted);font-family:var(--font);font-size:12px;cursor:pointer;border-bottom:2px solid transparent">🖱️ Периферия</button>
+    <button class="tab-btn" onclick="switchTab('extra')" id="tab_extra" style="padding:8px 14px;background:transparent;border:none;color:var(--muted);font-family:var(--font);font-size:12px;cursor:pointer;border-bottom:2px solid transparent">📋 Доп. инфо</button>
+  </div>
+
+  <!-- TAB: Location -->
+  <div id="tabContent_location">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group"><label class="form-label">Этаж *</label>
+        <select class="form-select" id="eFloor">
+          <option>1 этаж</option><option>2 этаж</option><option>3 этаж</option><option>4 этаж</option>
+          <option>5 этаж</option><option>6 этаж</option><option>7 этаж</option><option>8 этаж</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Отдел / Помещение *</label><input class="form-input" id="eDept" placeholder="Бухгалтерия"></div>
+      <div class="form-group"><label class="form-label">Ответственный пользователь</label><input class="form-input" id="eResponsible" placeholder="Иванов И.И."></div>
+      <div class="form-group"><label class="form-label">Статус</label>
+        <select class="form-select" id="eStatus">
+          <option value="active">✅ Активно (в работе)</option>
+          <option value="repair">🔧 В ремонте</option>
+          <option value="storage">📦 На хранении</option>
+          <option value="written_off">🗑️ Списано</option>
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: PC -->
+  <div id="tabContent_pc" style="display:none">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group"><label class="form-label">Имя ПК / Сетевое имя</label><input class="form-input" id="ePcName" placeholder="PC-BUHGALTER-01"></div>
+      <div class="form-group"><label class="form-label">Инвентарный номер</label><input class="form-input" id="ePcInv" placeholder="ОС-000123"></div>
+      <div class="form-group"><label class="form-label">Производитель</label><input class="form-input" id="ePcBrand" placeholder="Dell, HP, Lenovo..."></div>
+      <div class="form-group"><label class="form-label">Модель</label><input class="form-input" id="ePcModel" placeholder="OptiPlex 7090"></div>
+      <div class="form-group"><label class="form-label">Серийный номер</label><input class="form-input" id="ePcSerial" placeholder="SN-XXXXXXX"></div>
+      <div class="form-group"><label class="form-label">Операционная система</label><input class="form-input" id="ePcOs" placeholder="Windows 10 Pro"></div>
+      <div class="form-group"><label class="form-label">Процессор (CPU)</label><input class="form-input" id="ePcCpu" placeholder="Intel Core i5-10400"></div>
+      <div class="form-group"><label class="form-label">Оперативная память</label><input class="form-input" id="ePcRam" placeholder="8 ГБ DDR4"></div>
+      <div class="form-group"><label class="form-label">Диск (HDD/SSD)</label><input class="form-input" id="ePcHdd" placeholder="SSD 256 ГБ"></div>
+      <div class="form-group"><label class="form-label">IP-адрес</label><input class="form-input" id="ePcIp" placeholder="192.168.1.50"></div>
+      <div class="form-group"><label class="form-label">MAC-адрес</label><input class="form-input" id="ePcMac" placeholder="AA:BB:CC:DD:EE:FF"></div>
+      <div class="form-group" style="grid-column:span 2">
+        <label class="form-label">🛡️ Антивирус</label>
+        <input class="form-input" id="eAntivirus" placeholder="Kaspersky, Dr.Web, Windows Defender... (оставьте пустым если не установлен)">
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: Peripherals -->
+  <div id="tabContent_periph" style="display:none">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group"><label class="form-label">Монитор (модель)</label><input class="form-input" id="eMonitor" placeholder="Samsung 24' S24F350"></div>
+      <div class="form-group"><label class="form-label">Монитор — инв. номер</label><input class="form-input" id="eMonitorInv" placeholder="ОС-000456"></div>
+      <div class="form-group"><label class="form-label">Монитор — серийный номер</label><input class="form-input" id="eMonitorSerial" placeholder="SN-MONITOR"></div>
+      <div class="form-group"><label class="form-label">Клавиатура</label><input class="form-input" id="eKeyboard" placeholder="Logitech K120"></div>
+      <div class="form-group"><label class="form-label">Мышь</label><input class="form-input" id="eMouse" placeholder="Logitech M100"></div>
+      <div class="form-group"><label class="form-label">ИБП / UPS</label><input class="form-input" id="eUps" placeholder="APC Back-UPS 650VA"></div>
+      <div class="form-group"><label class="form-label">Телефон (IP/аналог)</label><input class="form-input" id="ePhone" placeholder="Yealink T21P, доб. 101"></div>
+      <div class="form-group" style="grid-column:span 2"><label class="form-label">Прочее оборудование</label>
+        <input class="form-input" id="eOther" placeholder="Сканер Epson, веб-камера Logitech C920..."></div>
+    </div>
+  </div>
+
+  <!-- TAB: Extra -->
+  <div id="tabContent_extra" style="display:none">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group"><label class="form-label">Дата приобретения</label><input class="form-input" id="ePurchaseDate" type="date"></div>
+      <div class="form-group"><label class="form-label">Гарантия до</label><input class="form-input" id="eWarrantyUntil" type="date"></div>
+      <div class="form-group" style="grid-column:span 2"><label class="form-label">Примечания</label>
+        <input class="form-input" id="eNote" placeholder="Любые дополнительные сведения..."></div>
+    </div>
+  </div>
+
+  <div class="modal-actions" style="margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+    <button class="btn btn-primary" onclick="saveEquipment()">💾 Сохранить</button>
+    <button class="btn btn-outline" onclick="closeEdit()">Отмена</button>
+  </div>
+</div>
+</div>
+
+<!-- ═══════════════ VIEW MODAL ═══════════════ -->
+<div class="modal-overlay" id="viewModal">
+<div class="modal" style="width:680px;max-height:90vh;overflow-y:auto">
+  <div class="modal-title" id="viewTitle">Рабочее место</div>
+  <div id="viewContent"></div>
+  <div style="display:flex;gap:10px;margin-top:20px;border-top:1px solid var(--border);padding-top:16px">
+    {% if session.get('role')=='admin' %}
+    <button class="btn btn-orange" id="viewEditBtn">✏️ Редактировать</button>
+    {% endif %}
+    <button class="btn btn-outline" onclick="document.getElementById('viewModal').classList.remove('open')">Закрыть</button>
+    <button class="btn btn-sm" style="margin-left:auto;background:transparent;border:1px solid var(--border);color:var(--muted)" id="viewHistBtn">📋 История изменений</button>
+  </div>
+</div>
+</div>
+
+<!-- ═══════════════ HISTORY MODAL ═══════════════ -->
+<div class="modal-overlay" id="histModal">
+<div class="modal" style="width:600px">
+  <div class="modal-title">📋 История изменений</div>
+  <div class="table-wrap" style="max-height:400px;overflow-y:auto">
+    <table><thead><tr><th>Дата</th><th>Поле</th><th>Было</th><th>Стало</th><th>Кто</th></tr></thead>
+    <tbody id="histBody"></tbody></table>
+  </div>
+  <div class="modal-actions" style="margin-top:16px">
+    <button class="btn btn-outline" onclick="document.getElementById('histModal').classList.remove('open')">Закрыть</button>
+  </div>
+</div>
+</div>
+
+<div id="toast" style="display:none;position:fixed;bottom:24px;right:24px;background:var(--green);color:#0f1117;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:999"></div>
+
+<script>
+const ROLE = "{{ session.get('role') }}";
+const FLOOR_COLORS = ["#4f7ef8","#3ecf7a","#f5a623","#f0883e","#9b72f8","#56d364","#79c0ff","#ffa657"];
+let ALL_DATA = [], toastT, currentViewId = null, currentView = "table";
+
+function floorColor(fl){ const i=parseInt(fl); return isNaN(i) ? "#8892a4" : FLOOR_COLORS[Math.max(0,(i-1)%FLOOR_COLORS.length)]; }
+
+const STATUS_LABELS = {active:"✅ Активно", repair:"🔧 В ремонте", storage:"📦 На хранении", written_off:"🗑️ Списано"};
+const STATUS_TAGS   = {active:"tag-green",   repair:"tag-red",      storage:"tag-orange",   written_off:""};
+
+const FIELD_LABELS = {
+  floor:"Этаж", dept:"Отдел", responsible:"Ответственный",
+  pc_name:"Имя ПК", pc_inv:"Инв. №", pc_brand:"Производитель", pc_model:"Модель",
+  pc_serial:"Серийный №", pc_os:"ОС", pc_cpu:"Процессор", pc_ram:"ОЗУ",
+  pc_hdd:"Диск", pc_ip:"IP-адрес", pc_mac:"MAC-адрес",
+  monitor:"Монитор", monitor_inv:"Монитор инв.", monitor_serial:"Монитор серийный",
+  keyboard:"Клавиатура", mouse:"Мышь", ups:"ИБП", phone:"Телефон",
+  other_devices:"Прочее оборудование",
+  purchase_date:"Дата приобретения", warranty_until:"Гарантия до",
+  status:"Статус", note:"Примечание", antivirus:"Антивирус"
+};
+
+function setView(v){
+  currentView=v;
+  document.getElementById("tableView").style.display = v==="table"?"block":"none";
+  document.getElementById("cardsView").style.display  = v==="cards"?"block":"none";
+  document.getElementById("viewTable").className = v==="table"?"btn btn-primary btn-sm":"btn btn-outline btn-sm";
+  document.getElementById("viewCards").className = v==="cards"?"btn btn-primary btn-sm":"btn btn-outline btn-sm";
+}
+
+let noAvPanelVisible = false;
+function toggleNoAv(){
+  noAvPanelVisible = !noAvPanelVisible;
+  document.getElementById("noAvPanel").style.display = noAvPanelVisible ? "block" : "none";
+  if(noAvPanelVisible){
+    const active = ALL_DATA.filter(r=>r.status==="active");
+    const noAv   = active.filter(r=>!r.antivirus);
+    const withAv = active.filter(r=>r.antivirus);
+    const mkRow = (r, hasAv) =>
+      `<div style="display:flex;align-items:baseline;gap:6px;padding:4px 8px;background:${hasAv?"#10b98111":"#f0504a11"};border-radius:6px;font-size:11px">
+        <span style="color:var(--muted);min-width:90px;flex-shrink:0">${r.pc_ip||"—"}</span>
+        <span style="color:var(--text)">${r.dept||"—"}${r.responsible?" · <span style='color:var(--muted)'>"+r.responsible+"</span>":""}</span>
+        ${hasAv?`<span style="color:#10b981;font-size:10px;margin-left:auto;flex-shrink:0">${r.antivirus}</span>`:""}
+      </div>`;
+    document.getElementById("noAvList").innerHTML = noAv.length
+      ? noAv.map(r=>mkRow(r,false)).join("")
+      : `<div style="color:var(--green);font-size:11px;padding:6px">Все защищены ✓</div>`;
+    document.getElementById("withAvList").innerHTML = withAv.length
+      ? withAv.map(r=>mkRow(r,true)).join("")
+      : `<div style="color:var(--muted);font-size:11px;padding:6px">—</div>`;
+  }
+}
+
+function loadStats(){
+  fetch("/api/equipment/stats").then(r=>r.json()).then(d=>{
+    document.getElementById("sTotal").textContent = d.total;
+    document.getElementById("sActive").textContent = d.active;
+    document.getElementById("sRepair").textContent = d.repair;
+    document.getElementById("sStorage").textContent = d.storage;
+    document.getElementById("sWarranty").textContent = d.warranty_soon;
+    document.getElementById("sAv").textContent = d.with_antivirus;
+    if(d.no_antivirus > 0){
+      document.getElementById("sNoAv").textContent = "⚠️ Без АВ: "+d.no_antivirus;
+      document.getElementById("sAv").parentElement.style.setProperty("--c","#f0504a");
+    } else {
+      document.getElementById("sNoAv").textContent = "Все защищены ✓";
+    }
+    if(d.warranty_soon>0){
+      document.getElementById("warrantyAlert").style.display="block";
+      document.getElementById("warrantyAlert").textContent = "⚠️ У "+d.warranty_soon+" единиц оборудования гарантия истекает в течение 90 дней!";
+    }
+    // Populate floor filter
+    const ff = document.getElementById("floorFilter");
+    const existing = Array.from(ff.options).map(o=>o.value);
+    d.by_floor.forEach(r=>{
+      if(!existing.includes(r.floor)){
+        const o=document.createElement("option"); o.value=r.floor; o.textContent=r.floor+" ("+r.cnt+")";
+        ff.appendChild(o);
+      }
+    });
+  });
+}
+
+function loadDepts(){
+  fetch("/api/equipment/depts").then(r=>r.json()).then(depts=>{
+    const sel=document.getElementById("deptFilter");
+    sel.innerHTML='<option value="">Все отделы</option>';
+    depts.forEach(d=>{
+      const o=document.createElement("option"); o.value=d; o.textContent=d; sel.appendChild(o);
+    });
+  });
+}
+
+function load(){
+  fetch("/api/equipment").then(r=>r.json()).then(data=>{
+    ALL_DATA = data;
+    setSort("dept");
+    if(noAvPanelVisible){ noAvPanelVisible = false; toggleNoAv(); }
+  });
+  loadStats();
+}
+
+function filterAndRender(){
+  const search = document.getElementById("searchInput").value.toLowerCase();
+  const floor  = document.getElementById("floorFilter").value;
+  const dept   = document.getElementById("deptFilter").value;
+  const status = document.getElementById("statusFilter").value;
+
+  let d = ALL_DATA.filter(r=>{
+    if(floor  && r.floor!==floor)   return false;
+    if(dept   && r.dept!==dept)     return false;
+    if(status && r.status!==status) return false;
+    if(search){
+      const hay = [r.dept,r.responsible,r.pc_name,r.pc_inv,r.pc_brand,r.pc_model,
+                   r.pc_ip,r.pc_serial,r.monitor,r.phone,r.other_devices,r.pc_cpu].join(" ").toLowerCase();
+      if(!hay.includes(search)) return false;
+    }
+    return true;
+  });
+  // Apply current sort
+  applySort(d);
+
+  document.getElementById("countBadge").textContent = "Показано: "+d.length+" из "+ALL_DATA.length;
+  renderTable(d);
+  renderCards(d);
+}
+
+// ── Sortable columns ──────────────────────────────────────────────────────────
+const COLS = [
+  { key:"id",            label:"#",             sortFn:(a,b)=>a.id-b.id },
+  { key:"floor",         label:"Этаж",          sortFn:(a,b)=>cmp(a.floor,b.floor) },
+  { key:"dept",          label:"Отдел",         sortFn:(a,b)=>cmpEmpty(a.dept,b.dept), minWidth:"180px" },
+  { key:"responsible",   label:"Ответственный", sortFn:(a,b)=>cmp(a.responsible,b.responsible) },
+  { key:"pc_inv",        label:"Инв. №",        sortFn:(a,b)=>cmp(a.pc_inv,b.pc_inv) },
+  { key:"pc_cpu",        label:"Процессор",     sortFn:(a,b)=>cmp(a.pc_cpu,b.pc_cpu) },
+  { key:"pc_ram",        label:"RAM / Диск",    sortFn:(a,b)=>cmp(a.pc_ram,b.pc_ram) },
+  { key:"pc_os",         label:"ОС",            sortFn:(a,b)=>cmp(a.pc_os,b.pc_os) },
+  { key:"pc_ip",         label:"IP",            sortFn:(a,b)=>cmpIp(a.pc_ip,b.pc_ip) },
+  { key:"monitor",       label:"Монитор",       sortFn:(a,b)=>cmp(a.monitor,b.monitor) },
+  { key:"phone",         label:"Телефон",       sortFn:(a,b)=>cmp(a.phone,b.phone) },
+  { key:"warranty_until",label:"Гарантия до",   sortFn:(a,b)=>cmpDate(a.warranty_until,b.warranty_until) },
+  { key:"status",        label:"Статус",        sortFn:(a,b)=>cmp(a.status,b.status) },
+  { key:"_actions",      label:"",              sortFn:null },
+];
+
+let sortKey = "", sortDir = 1;
+
+function cmp(a,b){ a=a||""; b=b||""; return a.localeCompare(b,"ru"); }
+function cmpEmpty(a,b){
+  a=(a||"").trim(); b=(b||"").trim();
+  const ea=!a||a==="Не указан"; const eb=!b||b==="Не указан";
+  if(ea&&!eb) return 1; if(!ea&&eb) return -1;
+  return a.localeCompare(b,"ru");
+}
+function cmpIp(a,b){
+  // Sort IPs numerically: 192.168.1.5 < 192.168.1.10
+  const toNum = ip => (ip||"").split(".").map(n=>parseInt(n)||0).reduce((s,n,i)=>s+n*Math.pow(256,3-i),0);
+  return toNum(a)-toNum(b);
+}
+function cmpDate(a,b){
+  // Empty dates go to end
+  if(!a&&!b) return 0; if(!a) return 1; if(!b) return -1;
+  return a.localeCompare(b);
+}
+
+function buildHeader(){
+  const tr = document.getElementById("tableHead");
+  tr.innerHTML = COLS.map(col => {
+    if(!col.sortFn) return `<th></th>`;
+    const active = sortKey===col.key;
+    const arrow = active ? (sortDir===1 ? " ↑" : " ↓") : " ⇅";
+    const arrowColor = active ? "var(--accent)" : "rgba(255,255,255,.2)";
+    const style = col.minWidth ? `style="min-width:${col.minWidth};cursor:pointer;user-select:none"` : `style="cursor:pointer;user-select:none"`;
+    return `<th ${style} onclick="setSort('${col.key}')">${col.label}<span style="color:${arrowColor};font-size:10px">${arrow}</span></th>`;
+  }).join("");
+}
+
+function setSort(key){
+  if(sortKey===key) sortDir *= -1;
+  else { sortKey=key; sortDir=1; }
+  buildHeader();
+  filterAndRender();
+}
+
+function applySort(arr){
+  const col = COLS.find(c=>c.key===sortKey);
+  if(!col||!col.sortFn) return;
+  arr.sort((a,b)=> col.sortFn(a,b) * sortDir);
+}
+
+function warrantyStatus(w){
+  if(!w) return "";
+  const today = new Date(); const wd = new Date(w);
+  const diff = Math.round((wd-today)/(1000*60*60*24));
+  if(diff<0) return `<span style="color:var(--red);font-size:11px">❌ Истекла</span>`;
+  if(diff<=90) return `<span style="color:var(--orange);font-size:11px">⚠️ ${diff} дн.</span>`;
+  return `<span style="color:var(--muted);font-size:11px">${w}</span>`;
+}
+
+function renderTable(data){
+  const tbody = document.getElementById("tableBody");
+  tbody.innerHTML = data.map((r, index)=>{
+    const fc = floorColor(r.floor);
+    const st = STATUS_TAGS[r.status]||"";
+    const cpuShort = (r.pc_cpu||"—").replace(/CPU @ [\d.]+GHz/i,"").replace(/APU with .*/i,"").replace(/with Radeon.*/i,"").replace(/Gen Intel.*Core/i,"Gen Core").trim();
+    const avBadge = r.antivirus
+      ? `<span style="display:inline-block;font-size:9px;background:#10b98122;color:#10b981;border-radius:4px;padding:1px 6px;margin-top:3px;white-space:nowrap">🛡 ${r.antivirus}</span>`
+      : `<span style="display:inline-block;font-size:9px;background:#f0504a22;color:#f0504a;border-radius:4px;padding:1px 6px;margin-top:3px;white-space:nowrap">⚠ без АВ</span>`;
+    return `<tr style="cursor:pointer" onclick="openView(${r.id})">
+      <td style="color:var(--muted);font-size:11px;white-space:nowrap">${index + 1}</td>
+      <td style="white-space:nowrap"><span class="floor-badge" style="background:${fc}22;color:${fc}">${r.floor}</span></td>
+      <td style="font-size:12px;word-break:break-word">
+        <div>${r.dept||"—"}</div>${avBadge}
+      </td>
+      <td style="color:var(--muted);font-size:12px;word-break:break-word">${r.responsible||"—"}</td>
+      <td style="white-space:nowrap"><code style="font-size:11px">${r.pc_inv||"—"}</code></td>
+      <td style="font-size:12px;word-break:break-word">
+        <div style="font-weight:600;color:var(--text)">${cpuShort}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">${r.pc_brand||""} ${r.pc_model||""}</div>
+      </td>
+      <td style="font-size:11px;color:var(--muted)">
+        ${r.pc_ram||"—"}<br><span style="font-size:10px">${r.pc_hdd||""}</span>
+      </td>
+      <td style="font-size:11px;color:var(--muted);word-break:break-word">${r.pc_os||"—"}</td>
+      <td style="font-size:11px;white-space:nowrap"><code>${r.pc_ip||"—"}</code></td>
+      <td style="font-size:11px;color:var(--muted);word-break:break-word">${r.monitor?r.monitor.slice(0,22):"—"}</td>
+      <td style="font-size:11px;color:var(--muted);white-space:nowrap">${r.phone||"—"}</td>
+      <td>${warrantyStatus(r.warranty_until)}</td>
+      <td><span class="tag ${st}">${STATUS_LABELS[r.status]||r.status}</span></td>
+      <td onclick="event.stopPropagation()" style="white-space:nowrap">
+        ${ROLE==="admin"?`<button class="btn btn-orange btn-sm" onclick="openEdit(${r.id})" style="margin-right:4px">✏️</button>`:``}
+      </td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="14" class="empty">Нет данных. Нажмите "+ Добавить ПК"</td></tr>`;
+}
+
+function renderCards(data){
+  document.getElementById("cardsBody").innerHTML = data.map(r=>{
+    const fc = floorColor(r.floor);
+    const st = STATUS_TAGS[r.status]||"";
+    const specs = [r.pc_cpu,r.pc_ram,r.pc_hdd].filter(Boolean).join(" | ");
+    return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;cursor:pointer;border-left:3px solid ${fc}" onclick="openView(${r.id})">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">
+        <div>
+          <div style="font-weight:700;font-size:14px">${r.pc_brand||""} ${r.pc_model||"Без модели"}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">${r.pc_name||""} ${r.pc_inv?"| "+r.pc_inv:""}</div>
+        </div>
+        <span class="tag ${st}" style="flex-shrink:0">${STATUS_LABELS[r.status]||r.status}</span>
+      </div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+        <span style="background:${fc}22;color:${fc};border-radius:10px;padding:1px 8px;font-size:10px;font-weight:700">${r.floor}</span>
+        <span style="background:var(--surface2);color:var(--text);border-radius:10px;padding:1px 8px;font-size:10px">${r.dept}</span>
+        ${r.responsible?`<span style="background:var(--surface2);color:var(--muted);border-radius:10px;padding:1px 8px;font-size:10px">👤 ${r.responsible}</span>`:""}
+      </div>
+      ${specs?`<div style="font-size:11px;color:var(--muted);margin-bottom:6px">🔧 ${specs}</div>`:""}
+      <div style="display:flex;gap:12px;font-size:11px;color:var(--muted)">
+        ${r.pc_ip?`<span>🌐 ${r.pc_ip}</span>`:""}
+        ${r.pc_os?`<span>💿 ${r.pc_os}</span>`:""}
+        ${r.monitor?`<span>🖥 ${r.monitor.slice(0,20)}</span>`:""}
+        ${r.phone?`<span>📞 ${r.phone}</span>`:""}
+      </div>
+      ${r.warranty_until?`<div style="margin-top:8px;font-size:11px">🛡 Гарантия: ${warrantyStatus(r.warranty_until)}</div>`:""}
+    </div>`;
+  }).join("") || `<div class="empty">Нет данных</div>`;
+}
+
+function openView(id){
+  const r = ALL_DATA.find(x=>x.id===id); if(!r) return;
+  currentViewId = id;
+  document.getElementById("viewTitle").textContent = (r.pc_brand||"") + " " + (r.pc_model||r.dept);
+  const fc = floorColor(r.floor);
+
+  const section = (title, rows) => {
+    const items = rows.filter(([k,v])=>v).map(([k,v])=>`
+      <div style="display:flex;padding:5px 0;border-bottom:1px solid var(--border)22">
+        <div style="width:180px;font-size:11px;color:var(--muted);text-transform:uppercase;flex-shrink:0">${k}</div>
+        <div style="font-size:13px">${v}</div>
+      </div>`).join("");
+    if(!items) return "";
+    return `<div style="margin-bottom:16px">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;padding-bottom:4px;border-bottom:1px solid var(--border)">${title}</div>
+      ${items}</div>`;
+  };
+
+  document.getElementById("viewContent").innerHTML =
+    `<div style="font-size:11px;color:var(--muted);margin-bottom:8px">ID: ${r.id}</div>` +
+    `<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+      <span style="background:${fc}22;color:${fc};border-radius:10px;padding:2px 10px;font-size:11px;font-weight:700">${r.floor}</span>
+      <span class="tag ${STATUS_TAGS[r.status]||''}">${STATUS_LABELS[r.status]||r.status}</span>
+      ${r.warranty_until?`<span style="font-size:11px;padding:2px 10px">🛡 Гарантия: ${warrantyStatus(r.warranty_until)}</span>`:""}
+     </div>` +
+    section("📍 Размещение", [["Отдел",r.dept],["Ответственный",r.responsible]]) +
+    section("🖥️ Компьютер", [["Производитель",r.pc_brand],["Модель",r.pc_model],["Инв. номер",r.pc_inv],["Серийный номер",r.pc_serial],["Имя в сети",r.pc_name],["IP-адрес",r.pc_ip],["MAC-адрес",r.pc_mac],["Операционная система",r.pc_os],["Процессор",r.pc_cpu],["ОЗУ",r.pc_ram],["Диск",r.pc_hdd],["🛡️ Антивирус", r.antivirus ? `<span class="tag tag-green">${r.antivirus}</span>` : `<span class="tag tag-red">Не установлен</span>`]]) +
+    section("🖱️ Периферия", [["Монитор",r.monitor],["Монитор инв. №",r.monitor_inv],["Монитор серийный №",r.monitor_serial],["Клавиатура",r.keyboard],["Мышь",r.mouse],["ИБП",r.ups],["Телефон",r.phone],["Прочее",r.other_devices]]) +
+    section("📋 Дополнительно", [["Дата приобретения",r.purchase_date],["Гарантия до",r.warranty_until],["Примечание",r.note]]) +
+    `<div style="font-size:11px;color:var(--muted);margin-top:8px">Обновлено: ${r.updated_at||"—"} (${r.updated_by||"—"})</div>`;
+
+  if(ROLE==="admin"){
+    document.getElementById("viewEditBtn").onclick = ()=>{ document.getElementById("viewModal").classList.remove("open"); openEdit(id); };
+  }
+  document.getElementById("viewHistBtn").onclick = ()=>openHist(id);
+  document.getElementById("viewModal").classList.add("open");
+}
+
+function openAdd(){
+  document.getElementById("eId").value="";
+  document.getElementById("editTitle").textContent="Добавить рабочее место";
+  ["eDept","eResponsible","ePcName","ePcInv","ePcBrand","ePcModel","ePcSerial","ePcOs",
+   "ePcCpu","ePcRam","ePcHdd","ePcIp","ePcMac","eMonitor","eMonitorInv","eMonitorSerial",
+   "eKeyboard","eMouse","eUps","ePhone","eOther","ePurchaseDate","eWarrantyUntil","eNote","eAntivirus"
+  ].forEach(id=>document.getElementById(id).value="");
+  document.getElementById("eFloor").value="1 этаж";
+  document.getElementById("eStatus").value="active";
+  switchTab("location");
+  document.getElementById("editModal").classList.add("open");
+}
+
+function openEdit(id){
+  const r=ALL_DATA.find(x=>x.id===id); if(!r) return;
+  document.getElementById("eId").value=id;
+  document.getElementById("editTitle").textContent="Редактировать рабочее место";
+  document.getElementById("eFloor").value=r.floor||"1 этаж";
+  document.getElementById("eDept").value=r.dept||"";
+  document.getElementById("eResponsible").value=r.responsible||"";
+  document.getElementById("eStatus").value=r.status||"active";
+  document.getElementById("ePcName").value=r.pc_name||"";
+  document.getElementById("ePcInv").value=r.pc_inv||"";
+  document.getElementById("ePcBrand").value=r.pc_brand||"";
+  document.getElementById("ePcModel").value=r.pc_model||"";
+  document.getElementById("ePcSerial").value=r.pc_serial||"";
+  document.getElementById("ePcOs").value=r.pc_os||"";
+  document.getElementById("ePcCpu").value=r.pc_cpu||"";
+  document.getElementById("ePcRam").value=r.pc_ram||"";
+  document.getElementById("ePcHdd").value=r.pc_hdd||"";
+  document.getElementById("ePcIp").value=r.pc_ip||"";
+  document.getElementById("ePcMac").value=r.pc_mac||"";
+  document.getElementById("eMonitor").value=r.monitor||"";
+  document.getElementById("eMonitorInv").value=r.monitor_inv||"";
+  document.getElementById("eMonitorSerial").value=r.monitor_serial||"";
+  document.getElementById("eKeyboard").value=r.keyboard||"";
+  document.getElementById("eMouse").value=r.mouse||"";
+  document.getElementById("eUps").value=r.ups||"";
+  document.getElementById("ePhone").value=r.phone||"";
+  document.getElementById("eOther").value=r.other_devices||"";
+  document.getElementById("ePurchaseDate").value=r.purchase_date||"";
+  document.getElementById("eWarrantyUntil").value=r.warranty_until||"";
+  document.getElementById("eNote").value=r.note||"";
+  document.getElementById("eAntivirus").value=r.antivirus||"";
+  switchTab("location");
+  document.getElementById("editModal").classList.add("open");
+}
+
+function closeEdit(){ document.getElementById("editModal").classList.remove("open"); }
+
+function saveEquipment(){
+  const id = document.getElementById("eId").value;
+  const body = {
+    floor:document.getElementById("eFloor").value,
+    dept:document.getElementById("eDept").value,
+    responsible:document.getElementById("eResponsible").value,
+    status:document.getElementById("eStatus").value,
+    pc_name:document.getElementById("ePcName").value,
+    pc_inv:document.getElementById("ePcInv").value,
+    pc_brand:document.getElementById("ePcBrand").value,
+    pc_model:document.getElementById("ePcModel").value,
+    pc_serial:document.getElementById("ePcSerial").value,
+    pc_os:document.getElementById("ePcOs").value,
+    pc_cpu:document.getElementById("ePcCpu").value,
+    pc_ram:document.getElementById("ePcRam").value,
+    pc_hdd:document.getElementById("ePcHdd").value,
+    pc_ip:document.getElementById("ePcIp").value,
+    pc_mac:document.getElementById("ePcMac").value,
+    monitor:document.getElementById("eMonitor").value,
+    monitor_inv:document.getElementById("eMonitorInv").value,
+    monitor_serial:document.getElementById("eMonitorSerial").value,
+    keyboard:document.getElementById("eKeyboard").value,
+    mouse:document.getElementById("eMouse").value,
+    ups:document.getElementById("eUps").value,
+    phone:document.getElementById("ePhone").value,
+    other_devices:document.getElementById("eOther").value,
+    purchase_date:document.getElementById("ePurchaseDate").value,
+    warranty_until:document.getElementById("eWarrantyUntil").value,
+    note:document.getElementById("eNote").value,
+    antivirus:document.getElementById("eAntivirus").value,
+  };
+  if(!body.dept){ alert("Укажите отдел"); return; }
+  const url = id ? "/api/equipment/"+id : "/api/equipment";
+  fetch(url,{method:id?"PUT":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+    .then(r=>r.json()).then(d=>{
+      if(d.ok){ closeEdit(); buildHeader(); load(); loadDepts(); showToast(id?"Обновлено ✓":"Добавлено ✓"); }
+      else showToast("Ошибка: "+(d.error||""));
+    });
+}
+
+function openHist(id){
+  fetch("/api/equipment/"+id+"/history").then(r=>r.json()).then(rows=>{
+    const tbody=document.getElementById("histBody");
+    if(!rows.length){ tbody.innerHTML='<tr><td colspan="5" class="empty">История пуста</td></tr>'; }
+    else tbody.innerHTML=rows.map(r=>`<tr>
+      <td style="font-size:11px;color:var(--muted);white-space:nowrap">${r.changed_at?r.changed_at.slice(0,16):"—"}</td>
+      <td style="font-size:11px">${FIELD_LABELS[r.field_name]||r.field_name}</td>
+      <td style="font-size:11px;color:var(--red);max-width:130px;overflow:hidden;text-overflow:ellipsis">${r.old_value||"—"}</td>
+      <td style="font-size:11px;color:var(--green);max-width:130px;overflow:hidden;text-overflow:ellipsis">${r.new_value||"—"}</td>
+      <td style="font-size:11px;color:var(--muted)">${r.changed_by||"—"}</td>
+    </tr>`).join("");
+    document.getElementById("histModal").classList.add("open");
+  });
+}
+
+function switchTab(name){
+  ["location","pc","periph","extra"].forEach(t=>{
+    document.getElementById("tabContent_"+t).style.display = t===name?"block":"none";
+    const btn=document.getElementById("tab_"+t);
+    if(btn){ btn.style.color=t===name?"var(--accent)":"var(--muted)"; btn.style.borderBottom=t===name?"2px solid var(--accent)":"2px solid transparent"; }
+  });
+}
+
+function showToast(msg){const t=document.getElementById("toast");t.textContent=msg;t.style.display="block";clearTimeout(toastT);toastT=setTimeout(()=>t.style.display="none",2300);}
+
+buildHeader(); load(); loadDepts();
+</script>
+{% endblock %}

@@ -1,0 +1,186 @@
+{% extends "base.html" %}
+{% block title %}Принтеры{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div><div class="page-title">🖨️ Реестр принтеров</div><div class="page-sub">Управление списком оборудования</div></div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <select class="year-select" id="floorFilter" onchange="render()">
+      <option value="">Все этажи</option>
+    </select>
+    {% if session.get('role')=='admin' %}
+    <button class="btn btn-green" onclick="openAdd()">+ Добавить принтер</button>
+    {% endif %}
+  </div>
+</div>
+<div class="content">
+  <div id="alertBox"></div>
+  <div style="font-size:12px;color:var(--muted);margin-bottom:12px" id="countBadge"></div>
+  <div class="card" style="padding:0">
+    <div class="table-wrap" id="tableWrap"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-title" id="modalTitle">Добавить принтер</div>
+    <input type="hidden" id="editId">
+    <div class="form-group"><label class="form-label">Этаж</label>
+      <select class="form-select" id="fFloor">
+        <option>1 этаж</option><option>2 этаж</option><option>3 этаж</option><option>4 этаж</option>
+        <option>5 этаж</option><option>6 этаж</option><option>7 этаж</option><option>8 этаж</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">Помещение / Отдел</label><input class="form-input" id="fDept"></div>
+    <div class="form-group"><label class="form-label">Модель принтера</label><input class="form-input" id="fModel"></div>
+    <div class="form-group">
+      <label class="form-label">Картридж</label>
+      <select class="form-select" id="fCartSelect" onchange="onCartSelectChange()">
+        <option value="">— Выберите картридж —</option>
+        <option value="__new__">＋ Добавить новый...</option>
+      </select>
+      <input class="form-input" id="fCartNew" placeholder="Модель нового картриджа" style="display:none;margin-top:8px">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div class="form-group"><label class="form-label">Расход/мес (шт.)</label><input class="form-input" id="fRate" type="number" step="0.1" value="0.5"></div>
+      <div class="form-group"><label class="form-label">Цена картриджа (₽)</label><input class="form-input" id="fPrice" type="number" value="600"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Примечание</label><input class="form-input" id="fNote" placeholder="Необязательно"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="savePrinter()">Сохранить</button>
+      <button class="btn btn-outline" onclick="closeModal()">Отмена</button>
+    </div>
+  </div>
+</div>
+<div id="toast" style="display:none;position:fixed;bottom:24px;right:24px;background:var(--green);color:#0f1117;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:999"></div>
+
+<script>
+const ROLE = "{{ session.get('role') }}";
+const FLOOR_COLORS = ["#4f7ef8","#3ecf7a","#f5a623","#f0883e","#9b72f8","#56d364","#79c0ff","#ffa657"];
+let DATA = [], CARTRIDGES = [], toastT;
+
+fetch("/api/floors").then(r=>r.json()).then(floors=>{
+  const sel=document.getElementById("floorFilter");
+  floors.forEach(f=>{const o=document.createElement("option");o.value=f;o.textContent=f;sel.appendChild(o);});
+});
+
+function loadCartridges(cb){
+  fetch("/api/cartridge-names").then(r=>r.json()).then(names=>{CARTRIDGES=names;if(cb)cb();}).catch(()=>{CARTRIDGES=[];if(cb)cb();});
+}
+
+function rebuildCartSelect(selected){
+  const sel=document.getElementById("fCartSelect");
+  sel.innerHTML='<option value="">— Выберите картридж —</option>';
+  CARTRIDGES.forEach(name=>{
+    const o=document.createElement("option");o.value=name;o.textContent=name;
+    if(name===selected)o.selected=true;
+    sel.appendChild(o);
+  });
+  const o=document.createElement("option");o.value="__new__";o.textContent="＋ Добавить новый...";
+  if(selected==="__new__")o.selected=true;
+  sel.appendChild(o);
+}
+
+function onCartSelectChange(){
+  const sel=document.getElementById("fCartSelect");
+  const inp=document.getElementById("fCartNew");
+  const isNew=sel.value==="__new__";
+  inp.style.display=isNew?"block":"none";
+  if(isNew)inp.focus();
+}
+
+function getCartridgeValue(){
+  const sel=document.getElementById("fCartSelect");
+  return sel.value==="__new__"
+    ? document.getElementById("fCartNew").value.trim()
+    : sel.value;
+}
+
+function fmt(n){return new Intl.NumberFormat("ru-RU").format(Math.round(n))}
+function floorColor(fl){const i=parseInt(fl)-1;return FLOOR_COLORS[i]||FLOOR_COLORS[0];}
+
+function load(){
+  fetch("/api/printers").then(r=>r.json()).then(d=>{DATA=d;render();});
+}
+
+function render(){
+  const ff=document.getElementById("floorFilter").value;
+  const d=ff?DATA.filter(p=>p.floor===ff):DATA;
+  document.getElementById("countBadge").textContent=`Принтеров: ${d.length} | Плановый расход в год: ${fmt(d.reduce((s,p)=>s+p.monthly_rate*p.price*12,0))} ₽`;
+  let html=`<table><thead><tr>
+    <th>#</th><th>Этаж</th><th>Помещение</th><th>Модель</th><th>Картридж</th><th>Расход/мес</th><th>Цена ₽</th><th>План/год ₽</th><th>Примечание</th>
+    ${ROLE==="admin"?"<th></th>":""}
+  </tr></thead><tbody>`;
+  d.forEach(p=>{
+    const fc=floorColor(p.floor);
+    html+=`<tr>
+      <td style="color:var(--muted)">${p.id}</td>
+      <td><span class="floor-badge" style="background:${fc}22;color:${fc}">${p.floor}</span></td>
+      <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${p.dept}">${p.dept}</td>
+      <td style="color:var(--accent);font-size:12px">${p.model}</td>
+      <td><code>${p.cartridge}</code></td>
+      <td style="color:var(--muted)">${p.monthly_rate} шт/мес</td>
+      <td>${p.price} ₽</td>
+      <td style="color:var(--green);font-weight:600">${fmt(p.monthly_rate*p.price*12)} ₽</td>
+      <td style="color:var(--muted);font-size:12px">${p.note||"—"}</td>
+      ${ROLE==="admin"?`<td style="white-space:nowrap">
+        <button class="btn btn-orange btn-sm" onclick="openEdit(${p.id})" style="margin-right:4px">✏️</button>
+        <button class="btn btn-red btn-sm" onclick="del(${p.id})">✕</button>
+      </td>`:""}
+    </tr>`;
+  });
+  html+=`</tbody></table>`;
+  document.getElementById("tableWrap").innerHTML=html;
+}
+
+function openAdd(){
+  document.getElementById("editId").value="";
+  document.getElementById("modalTitle").textContent="Добавить принтер";
+  ["fDept","fModel","fCartNew","fNote"].forEach(id=>document.getElementById(id).value="");
+  document.getElementById("fRate").value=0.5;
+  document.getElementById("fPrice").value=600;
+  document.getElementById("fCartNew").style.display="none";
+  loadCartridges(()=>rebuildCartSelect(""));
+  document.getElementById("modal").classList.add("open");
+}
+function openEdit(id){
+  const p=DATA.find(x=>x.id===id); if(!p)return;
+  document.getElementById("editId").value=id;
+  document.getElementById("modalTitle").textContent="Редактировать принтер";
+  document.getElementById("fFloor").value=p.floor;
+  document.getElementById("fDept").value=p.dept;
+  document.getElementById("fModel").value=p.model;
+  document.getElementById("fRate").value=p.monthly_rate;
+  document.getElementById("fPrice").value=p.price;
+  document.getElementById("fNote").value=p.note||"";
+  loadCartridges(()=>{
+    if(CARTRIDGES.includes(p.cartridge)){
+      rebuildCartSelect(p.cartridge);
+      document.getElementById("fCartNew").style.display="none";
+    } else {
+      rebuildCartSelect("__new__");
+      document.getElementById("fCartNew").value=p.cartridge;
+      document.getElementById("fCartNew").style.display="block";
+    }
+  });
+  document.getElementById("modal").classList.add("open");
+}
+function closeModal(){document.getElementById("modal").classList.remove("open");}
+function savePrinter(){
+  const id=document.getElementById("editId").value;
+  const cartridge=getCartridgeValue();
+  const body={floor:document.getElementById("fFloor").value,dept:document.getElementById("fDept").value,
+    model:document.getElementById("fModel").value,cartridge,
+    monthly_rate:parseFloat(document.getElementById("fRate").value),
+    price:parseInt(document.getElementById("fPrice").value),note:document.getElementById("fNote").value};
+  if(!body.dept||!body.model||!body.cartridge){alert("Заполните обязательные поля");return;}
+  const url=id?`/api/printers/${id}`:"/api/printers";
+  fetch(url,{method:id?"PUT":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+    .then(r=>r.json()).then(d=>{
+      if(d.ok){closeModal();load();showToast(id?"Обновлено ✓":"Добавлено ✓");}
+    });
+}
+function del(id){if(confirm("Удалить принтер из реестра?"))fetch(`/api/printers/${id}`,{method:"DELETE"}).then(r=>r.json()).then(d=>{if(d.ok){load();showToast("Удалено");}});}
+function showToast(msg){const t=document.getElementById("toast");t.textContent=msg;t.style.display="block";clearTimeout(toastT);toastT=setTimeout(()=>t.style.display="none",2200);}
+load();
+</script>
+{% endblock %}

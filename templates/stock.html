@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% block title %}Склад картриджей{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <div class="page-title">📦 Склад картриджей</div>
+    <div class="page-sub">Остатки, совместимость с принтерами, движение</div>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <input id="searchInput" placeholder="🔍 Поиск картриджа..." onInput="filterTable()"
+      style="background:#0d1019;border:1px solid var(--border);color:var(--text);padding:7px 12px;border-radius:6px;font-family:var(--font);font-size:13px;outline:none;width:200px">
+    <select id="filterStatus" class="year-select" onchange="filterTable()">
+      <option value="all">Все</option>
+      <option value="empty">Нет в наличии</option>
+      <option value="low">Заканчивается</option>
+      <option value="ok">В норме</option>
+    </select>
+  </div>
+</div>
+
+<div class="content">
+
+  <!-- Alert banner -->
+  <div id="alertBanner" style="display:none" class="alert alert-error" ></div>
+
+  <!-- Summary cards -->
+  <div class="stat-grid" style="grid-template-columns:repeat(4,1fr)">
+    <div class="stat-card" style="--c:#4f7ef8"><div class="stat-num" id="sTotal">—</div><div class="stat-label">Типов картриджей</div></div>
+    <div class="stat-card" style="--c:#3ecf7a"><div class="stat-num" id="sOk">—</div><div class="stat-label">В норме</div></div>
+    <div class="stat-card" style="--c:#f5a623"><div class="stat-num" id="sLow">—</div><div class="stat-label">Заканчивается</div></div>
+    <div class="stat-card" style="--c:#f0504a"><div class="stat-num" id="sEmpty">—</div><div class="stat-label">Нет в наличии</div></div>
+  </div>
+
+  <!-- Table -->
+  <div class="card" style="padding:0">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Картридж</th>
+            <th style="text-align:center">Остаток</th>
+            <th style="text-align:center">Мин. запас</th>
+            <th>Статус</th>
+            <th>Принтеры (кол-во)</th>
+            <th>Цена ₽</th>
+            <th>Обновлено</th>
+            <th>Примечание</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="stockBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- Edit modal -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal" style="width:520px">
+    <div class="modal-title">✏️ Редактировать остаток: <code id="mCartName"></code></div>
+    <input type="hidden" id="mCart">
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+      <div class="form-group">
+        <label class="form-label">Остаток (шт.)</label>
+        <input class="form-input" id="mQty" type="number" min="0" value="0">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Мин. запас</label>
+        <input class="form-input" id="mMinQty" type="number" min="0" value="2">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Цена ₽</label>
+        <input class="form-input" id="mPrice" type="number" min="0" value="0">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Примечание</label>
+      <input class="form-input" id="mNote" placeholder="Необязательно">
+    </div>
+
+    <div style="border-top:1px solid var(--border);margin:16px 0;padding-top:16px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:10px;font-weight:600;text-transform:uppercase">Принтеры, совместимые с этим картриджем:</div>
+      <div id="mPrinters" style="max-height:180px;overflow-y:auto"></div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="saveStock()">Сохранить</button>
+      <button class="btn btn-outline" onclick="closeEdit()">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<!-- Move modal (issue/receive) -->
+<div class="modal-overlay" id="moveModal">
+  <div class="modal" style="width:400px">
+    <div class="modal-title" id="moveTitleEl"></div>
+    <input type="hidden" id="moveCart">
+    <input type="hidden" id="moveDir">
+    <div class="form-group">
+      <label class="form-label">Количество (шт.)</label>
+      <input class="form-input" id="moveQty" type="number" min="1" value="1">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Причина / комментарий</label>
+      <input class="form-input" id="moveReason" placeholder="Например: выдан в Бухгалтерию">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="doMove()">Подтвердить</button>
+      <button class="btn btn-outline" onclick="closeMove()">Отмена</button>
+    </div>
+  </div>
+</div>
+
+<!-- Log modal -->
+<div class="modal-overlay" id="logModal">
+  <div class="modal" style="width:560px">
+    <div class="modal-title">📋 История движения: <code id="logCartName"></code></div>
+    <div class="table-wrap" style="max-height:350px;overflow-y:auto">
+      <table>
+        <thead><tr><th>Дата</th><th>Изменение</th><th>Причина</th><th>Кто</th></tr></thead>
+        <tbody id="logBody"></tbody>
+      </table>
+    </div>
+    <div class="modal-actions" style="margin-top:16px">
+      <button class="btn btn-outline" onclick="closeLog()">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast" style="display:none;position:fixed;bottom:24px;right:24px;background:var(--green);color:#0f1117;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:999"></div>
+
+<script>
+const ROLE = "{{ session.get('role') }}";
+const FLOOR_COLORS = ["#4f7ef8","#3ecf7a","#f5a623","#f0883e","#9b72f8","#56d364","#79c0ff","#ffa657"];
+let ALL_DATA = [], toastT;
+
+function fmt(n){return new Intl.NumberFormat("ru-RU").format(Math.round(n))}
+function floorColor(fl){const i=parseInt(fl)-1;return FLOOR_COLORS[Math.max(0,(i%FLOOR_COLORS.length))];}
+
+function statusBadge(row){
+  if(row.empty) return '<span class="tag tag-red">❌ Нет в наличии</span>';
+  if(row.low)   return '<span class="tag tag-orange">⚠️ Заканчивается</span>';
+  return '<span class="tag tag-green">✅ В норме</span>';
+}
+
+function load(){
+  fetch("/api/stock").then(r=>r.json()).then(data=>{
+    ALL_DATA = data;
+    const empty = data.filter(d=>d.empty).length;
+    const low   = data.filter(d=>!d.empty && d.low).length;
+    const ok    = data.filter(d=>!d.empty && !d.low).length;
+    document.getElementById("sTotal").textContent = data.length;
+    document.getElementById("sOk").textContent = ok;
+    document.getElementById("sLow").textContent = low;
+    document.getElementById("sEmpty").textContent = empty;
+
+    // Alert banner
+    const banner = document.getElementById("alertBanner");
+    if(empty > 0 || low > 0){
+      banner.style.display = "block";
+      banner.innerHTML = (empty > 0 ? "❌ <b>"+empty+" типов</b> картриджей отсутствует на складе. " : "") +
+                         (low > 0 ? "⚠️ <b>"+low+" типов</b> заканчивается (остаток ≤ минимальному запасу)." : "");
+    } else {
+      banner.style.display = "none";
+    }
+    filterTable();
+  });
+}
+
+function filterTable(){
+  const search = document.getElementById("searchInput").value.toLowerCase();
+  const status = document.getElementById("filterStatus").value;
+  const tbody = document.getElementById("stockBody");
+  const canEdit = ROLE !== "viewer";
+
+  const filtered = ALL_DATA.filter(d=>{
+    const matchSearch = d.cartridge.toLowerCase().includes(search) ||
+      d.printers.some(p=>p.dept.toLowerCase().includes(search) || p.model.toLowerCase().includes(search));
+    const matchStatus = status==="all" ||
+      (status==="empty" && d.empty) ||
+      (status==="low" && !d.empty && d.low) ||
+      (status==="ok" && !d.empty && !d.low);
+    return matchSearch && matchStatus;
+  });
+
+  tbody.innerHTML = filtered.map(row => {
+    const printerPills = row.printers.slice(0,3).map(p=>{
+      const c = floorColor(p.floor);
+      return `<span title="${p.floor} — ${p.dept} — ${p.model}" style="display:inline-block;background:${c}22;color:${c};border-radius:12px;padding:1px 8px;font-size:10px;font-weight:600;margin:1px">${p.floor.replace(" этаж","эт.")}: ${p.dept.length>15?p.dept.slice(0,15)+"…":p.dept}</span>`;
+    }).join("") + (row.printers.length>3 ? `<span style="font-size:10px;color:var(--muted);margin-left:4px">+${row.printers.length-3} ещё</span>` : "");
+
+    const qtyColor = row.empty ? "var(--red)" : row.low ? "var(--orange)" : "var(--green)";
+    const updDate = row.updated_at ? row.updated_at.slice(0,10) : "—";
+    const updBy = row.updated_by || "—";
+
+    return `<tr>
+      <td><code style="font-size:13px">${row.cartridge}</code></td>
+      <td style="text-align:center;font-size:18px;font-weight:700;color:${qtyColor}">${row.qty}</td>
+      <td style="text-align:center;color:var(--muted)">${row.min_qty}</td>
+      <td>${statusBadge(row)}</td>
+      <td style="max-width:280px">
+        <div style="display:flex;flex-wrap:wrap;gap:2px;align-items:center">
+          ${printerPills}
+          <button onclick="showPrinters('${row.cartridge.replace(/'/g,"\\'")}',${row.printer_count})" style="background:transparent;border:none;color:var(--accent);font-size:11px;cursor:pointer;padding:2px 4px">${row.printer_count} принт.</button>
+        </div>
+      </td>
+      <td style="color:var(--muted)">${row.price > 0 ? fmt(row.price)+" ₽" : "—"}</td>
+      <td style="color:var(--muted);font-size:11px">${updDate}<br><span style="color:var(--muted)">${updBy}</span></td>
+      <td style="color:var(--muted);font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${row.note||"—"}</td>
+      <td style="white-space:nowrap">
+        ${canEdit ? `
+        <button class="btn btn-green btn-sm" style="margin-bottom:3px;display:block;width:100%" onclick="openMove('${row.cartridge.replace(/'/g,"\\'")}','in')">+ Приход</button>
+        <button class="btn btn-orange btn-sm" style="margin-bottom:3px;display:block;width:100%" onclick="openMove('${row.cartridge.replace(/'/g,"\\'")}','out')">− Выдать</button>
+        <button class="btn btn-outline btn-sm" style="margin-bottom:3px;display:block;width:100%" onclick="openEdit('${row.cartridge.replace(/'/g,"\\'")}')">✏️ Изм.</button>
+        <button class="btn btn-sm" style="display:block;width:100%;background:transparent;border:1px solid var(--border);color:var(--muted)" onclick="openLog('${row.cartridge.replace(/'/g,"\\'")}')">📋 История</button>
+        ` : `<button class="btn btn-sm" style="background:transparent;border:1px solid var(--border);color:var(--muted)" onclick="openLog('${row.cartridge.replace(/'/g,"\\'")}')">📋 История</button>`}
+      </td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="9" class="empty">Ничего не найдено</td></tr>`;
+}
+
+function showPrinters(cart, count){
+  const row = ALL_DATA.find(d=>d.cartridge===cart);
+  if(!row) return;
+  openEdit(cart);
+}
+
+function openEdit(cart){
+  const row = ALL_DATA.find(d=>d.cartridge===cart);
+  if(!row) return;
+  document.getElementById("mCart").value = cart;
+  document.getElementById("mCartName").textContent = cart;
+  document.getElementById("mQty").value = row.qty;
+  document.getElementById("mMinQty").value = row.min_qty;
+  document.getElementById("mPrice").value = row.price;
+  document.getElementById("mNote").value = row.note||"";
+
+  // Show compatible printers
+  const div = document.getElementById("mPrinters");
+  if(row.printers.length === 0){
+    div.innerHTML = '<div style="color:var(--muted);font-size:12px">Нет принтеров с таким картриджем</div>';
+  } else {
+    div.innerHTML = row.printers.map(p=>{
+      const c = floorColor(p.floor);
+      return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid var(--border)22">
+        <span style="background:${c}22;color:${c};border-radius:10px;padding:2px 8px;font-size:10px;font-weight:700;white-space:nowrap">${p.floor}</span>
+        <span style="flex:1;font-size:12px">${p.dept}</span>
+        <span style="color:var(--muted);font-size:11px">${p.model}</span>
+      </div>`;
+    }).join("");
+  }
+
+  document.getElementById("editModal").classList.add("open");
+}
+
+function closeEdit(){ document.getElementById("editModal").classList.remove("open"); }
+
+function saveStock(){
+  const cart = document.getElementById("mCart").value;
+  fetch("/api/stock", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({
+      cartridge: cart,
+      qty: parseInt(document.getElementById("mQty").value)||0,
+      min_qty: parseInt(document.getElementById("mMinQty").value)||2,
+      price: parseInt(document.getElementById("mPrice").value)||0,
+      note: document.getElementById("mNote").value
+    })
+  }).then(r=>r.json()).then(d=>{
+    if(d.ok){ closeEdit(); load(); showToast("Сохранено ✓"); }
+    else showToast("Ошибка: "+d.error);
+  });
+}
+
+function openMove(cart, dir){
+  document.getElementById("moveCart").value = cart;
+  document.getElementById("moveDir").value = dir;
+  document.getElementById("moveTitleEl").textContent = (dir==="in" ? "📥 Приход: " : "📤 Выдача: ") + cart;
+  document.getElementById("moveQty").value = 1;
+  document.getElementById("moveReason").value = "";
+  document.getElementById("moveModal").classList.add("open");
+}
+function closeMove(){ document.getElementById("moveModal").classList.remove("open"); }
+
+function doMove(){
+  const cart = document.getElementById("moveCart").value;
+  const dir  = document.getElementById("moveDir").value;
+  const qty  = parseInt(document.getElementById("moveQty").value)||1;
+  const reason = document.getElementById("moveReason").value;
+  const change = dir==="in" ? qty : -qty;
+  fetch("/api/stock/move", {method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({cartridge:cart, change, reason})
+  }).then(r=>r.json()).then(d=>{
+    if(d.ok){ closeMove(); load(); showToast(dir==="in"?"Принято на склад ✓":"Выдано со склада ✓"); }
+    else showToast("Ошибка: "+d.error);
+  });
+}
+
+function openLog(cart){
+  document.getElementById("logCartName").textContent = cart;
+  document.getElementById("logModal").classList.add("open");
+  fetch("/api/stock/log?cartridge="+encodeURIComponent(cart)).then(r=>r.json()).then(rows=>{
+    const tbody = document.getElementById("logBody");
+    if(!rows.length){ tbody.innerHTML='<tr><td colspan="4" class="empty">История пуста</td></tr>'; return; }
+    tbody.innerHTML = rows.map(r=>{
+      const ch = r.change_qty;
+      const color = ch>0 ? "var(--green)" : "var(--red)";
+      const sign  = ch>0 ? "+" : "";
+      return `<tr>
+        <td style="color:var(--muted);font-size:11px">${r.created_at?r.created_at.slice(0,16):"—"}</td>
+        <td style="font-weight:700;color:${color}">${sign}${ch} шт.</td>
+        <td style="font-size:12px">${r.reason||"—"}</td>
+        <td style="color:var(--muted);font-size:11px">${r.created_by||"—"}</td>
+      </tr>`;
+    }).join("");
+  });
+}
+function closeLog(){ document.getElementById("logModal").classList.remove("open"); }
+
+function showToast(msg){
+  const t=document.getElementById("toast"); t.textContent=msg; t.style.display="block";
+  clearTimeout(toastT); toastT=setTimeout(()=>t.style.display="none",2200);
+}
+
+load();
+</script>
+{% endblock %}

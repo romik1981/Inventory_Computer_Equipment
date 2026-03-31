@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>Вход — КартриджУчёт</title>
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:linear-gradient(135deg,#EEF3FF 0%,#F2F5FB 50%,#E8EFF9 100%);
+  font-family:'Nunito',sans-serif;display:flex;align-items:center;
+  justify-content:center;min-height:100vh;
+}
+body::before{
+  content:'';position:fixed;inset:0;
+  background:radial-gradient(ellipse at 20% 50%,rgba(59,111,240,.08) 0%,transparent 60%),
+             radial-gradient(ellipse at 80% 20%,rgba(123,168,248,.1) 0%,transparent 50%);
+  pointer-events:none
+}
+.box{
+  background:#fff;border:1px solid #E4E9F2;border-radius:18px;padding:40px 38px;
+  width:390px;max-width:95vw;box-shadow:0 8px 40px rgba(50,70,130,.12),0 1px 4px rgba(50,70,130,.08);
+  position:relative
+}
+.logo{text-align:center;margin-bottom:32px}
+.logo-icon{
+  width:56px;height:56px;border-radius:14px;margin:0 auto 12px;
+  background:linear-gradient(135deg,#3B6FF0,#7BA8F8);
+  display:flex;align-items:center;justify-content:center;
+  font-size:26px;box-shadow:0 6px 20px rgba(59,111,240,.35)
+}
+.logo h1{font-size:22px;font-weight:800;color:#18223E;letter-spacing:-.4px}
+.logo p{font-size:12px;color:#8A95AA;margin-top:5px;font-weight:500}
+.form-group{margin-bottom:16px}
+label{display:block;font-size:11px;color:#4A5570;margin-bottom:6px;font-weight:800;text-transform:uppercase;letter-spacing:.5px}
+input{
+  width:100%;background:#F7F9FD;border:1.5px solid #E4E9F2;color:#18223E;
+  padding:11px 14px;border-radius:8px;font-family:'Nunito',sans-serif;
+  font-size:14px;font-weight:500;outline:none;transition:.15s
+}
+input:focus{border-color:#3B6FF0;background:#fff;box-shadow:0 0 0 3px rgba(59,111,240,.1)}
+input::placeholder{color:#B0B8CC}
+.btn{
+  width:100%;padding:12px;background:linear-gradient(135deg,#3B6FF0,#5B8AF5);color:#fff;
+  border:none;border-radius:8px;font-family:'Nunito',sans-serif;font-size:14px;
+  font-weight:800;cursor:pointer;margin-top:6px;transition:.15s;letter-spacing:.2px;
+  box-shadow:0 4px 14px rgba(59,111,240,.35)
+}
+.btn:hover{background:linear-gradient(135deg,#2A5BD8,#4A79E8);box-shadow:0 6px 20px rgba(59,111,240,.45)}
+.error{background:#FEE2E2;border:1px solid #FECACA;color:#DC2626;
+  padding:10px 14px;border-radius:8px;font-size:12.5px;margin-bottom:16px;font-weight:600}
+.hint{text-align:center;font-size:11px;color:#B0B8CC;margin-top:18px;font-weight:500}
+.hint b{color:#8A95AA}
+.divider{border:none;border-top:1px solid #F0F3FA;margin:18px 0}
+</style>
+</head>
+<body>
+<div class="box">
+  <div class="logo">
+    <div class="logo-icon">🖨️</div>
+    <h1>КартриджУчёт</h1>
+    <p>Система учёта расходных материалов</p>
+  </div>
+  {% if error %}<div class="error">⚠️ {{ error }}</div>{% endif %}
+  <form method="POST">
+    <div class="form-group">
+      <label>Имя пользователя</label>
+      <input type="text" name="username" autofocus autocomplete="username" placeholder="Введите логин">
+    </div>
+    <div class="form-group">
+      <label>Пароль</label>
+      <input type="password" name="password" autocomplete="current-password" placeholder="••••••••">
+    </div>
+    <button type="submit" class="btn">Войти в систему</button>
+  </form>
+  <hr class="divider">
+  <div class="hint">При первом входе: <b>admin</b> / <b>admin123</b></div>
+</div>
+</body>
+</html>

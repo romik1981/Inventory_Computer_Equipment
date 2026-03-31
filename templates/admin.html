@@ -1,0 +1,161 @@
+{% extends "base.html" %}
+{% block title %}Администрирование{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div><div class="page-title">⚙️ Администрирование</div><div class="page-sub">Пользователи, роли, резервные копии</div></div>
+</div>
+<div class="content">
+<div class="two-col">
+
+<!-- Users -->
+<div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="card-title" style="margin:0">👥 Пользователи</div>
+      <button class="btn btn-green btn-sm" onclick="openAdd()">+ Добавить</button>
+    </div>
+    <div class="table-wrap">
+      <table id="userTable">
+        <thead><tr><th>Логин</th><th>Роль</th><th>Создан</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card" style="font-size:12px;color:var(--muted);line-height:1.7">
+    <div class="card-title">Описание ролей</div>
+    <div><span class="tag tag-blue" style="margin-right:6px">admin</span> Полный доступ: просмотр, ввод данных, управление принтерами/тонерами/пользователями, бэкапы</div>
+    <div style="margin-top:8px"><span class="tag tag-green" style="margin-right:6px">operator</span> Просмотр и ввод данных о расходе, без управления настройками</div>
+    <div style="margin-top:8px"><span class="tag tag-orange" style="margin-right:6px">viewer</span> Только просмотр, изменение данных недоступно</div>
+  </div>
+</div>
+
+<!-- Backups -->
+<div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <div class="card-title" style="margin:0">💾 Резервные копии</div>
+      <button class="btn btn-primary btn-sm" onclick="makeBackup()">Создать бэкап</button>
+    </div>
+    <div id="backupAlert"></div>
+    <div class="table-wrap">
+      <table id="backupTable">
+        <thead><tr><th>Файл</th><th>Дата</th><th>Размер</th><th></th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:12px">Хранится до 30 последних копий. База данных: SQLite (data.db)</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">ℹ️ Информация о системе</div>
+    <div style="font-size:12px;color:var(--muted);line-height:2">
+      <div>🌐 <b style="color:var(--text)">URL:</b> http://localhost:5000</div>
+      <div>🗄️ <b style="color:var(--text)">База данных:</b> SQLite (data.db)</div>
+      <div>📁 <b style="color:var(--text)">Бэкапы:</b> папка /backups/</div>
+      <div>🐍 <b style="color:var(--text)">Технологии:</b> Python + Flask</div>
+    </div>
+  </div>
+</div>
+
+</div>
+</div>
+
+<!-- User modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-title" id="modalTitle">Добавить пользователя</div>
+    <input type="hidden" id="editId">
+    <div class="form-group"><label class="form-label">Логин</label><input class="form-input" id="fUser"></div>
+    <div class="form-group"><label class="form-label">Пароль <span id="pwHint" style="color:var(--muted)">(обязательно)</span></label><input class="form-input" id="fPw" type="password" placeholder="Введите пароль"></div>
+    <div class="form-group"><label class="form-label">Роль</label>
+      <select class="form-select" id="fRole">
+        <option value="operator">operator — Оператор</option>
+        <option value="viewer">viewer — Только просмотр</option>
+        <option value="admin">admin — Администратор</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="saveUser()">Сохранить</button>
+      <button class="btn btn-outline" onclick="closeModal()">Отмена</button>
+    </div>
+  </div>
+</div>
+<div id="toast" style="display:none;position:fixed;bottom:24px;right:24px;background:var(--green);color:#0f1117;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:999"></div>
+
+<script>
+let toastT;
+function fmt(n){return n<1024?n+" Б":n<1048576?(n/1024).toFixed(1)+" КБ":(n/1048576).toFixed(2)+" МБ";}
+
+function loadUsers(){
+  fetch("/api/users").then(r=>r.json()).then(users=>{
+    const tbody=document.querySelector("#userTable tbody");
+    const roleTag={"admin":"tag-blue","operator":"tag-green","viewer":"tag-orange"};
+    tbody.innerHTML=users.map(u=>`<tr>
+      <td style="font-weight:600">${u.username}</td>
+      <td><span class="tag ${roleTag[u.role]||'tag-orange'}">${u.role}</span></td>
+      <td style="color:var(--muted);font-size:11px">${u.created_at?u.created_at.slice(0,10):"—"}</td>
+      <td>
+        <button class="btn btn-orange btn-sm" onclick="openEdit(${u.id},'${u.username}','${u.role}')" style="margin-right:4px">✏️</button>
+        <button class="btn btn-red btn-sm" onclick="delUser(${u.id})">✕</button>
+      </td>
+    </tr>`).join("");
+  });
+}
+
+function loadBackups(){
+  fetch("/api/backups").then(r=>r.json()).then(files=>{
+    const tbody=document.querySelector("#backupTable tbody");
+    if(!files.length){tbody.innerHTML=`<tr><td colspan="4" class="empty">Нет резервных копий</td></tr>`;return;}
+    tbody.innerHTML=files.map(f=>`<tr>
+      <td style="font-size:12px;color:var(--accent)">${f.name}</td>
+      <td style="color:var(--muted);font-size:12px">${f.modified}</td>
+      <td style="color:var(--muted);font-size:12px">${fmt(f.size)}</td>
+      <td><a href="/api/backup/download/${f.name}" class="btn btn-outline btn-sm" download>⬇ Скачать</a></td>
+    </tr>`).join("");
+  });
+}
+
+function makeBackup(){
+  fetch("/api/backup",{method:"POST"}).then(r=>r.json()).then(d=>{
+    if(d.ok){showToast("Бэкап создан: "+d.file);loadBackups();}
+  });
+}
+
+function openAdd(){
+  document.getElementById("editId").value="";
+  document.getElementById("modalTitle").textContent="Добавить пользователя";
+  document.getElementById("fUser").value="";
+  document.getElementById("fPw").value="";
+  document.getElementById("fRole").value="operator";
+  document.getElementById("pwHint").textContent="(обязательно)";
+  document.getElementById("fUser").disabled=false;
+  document.getElementById("modal").classList.add("open");
+}
+function openEdit(id,user,role){
+  document.getElementById("editId").value=id;
+  document.getElementById("modalTitle").textContent="Редактировать пользователя";
+  document.getElementById("fUser").value=user;
+  document.getElementById("fUser").disabled=true;
+  document.getElementById("fPw").value="";
+  document.getElementById("fRole").value=role;
+  document.getElementById("pwHint").textContent="(оставьте пустым, чтобы не менять)";
+  document.getElementById("modal").classList.add("open");
+}
+function closeModal(){document.getElementById("modal").classList.remove("open");}
+function saveUser(){
+  const id=document.getElementById("editId").value;
+  const body={username:document.getElementById("fUser").value,password:document.getElementById("fPw").value,role:document.getElementById("fRole").value};
+  if(!id&&!body.password){alert("Введите пароль");return;}
+  const url=id?`/api/users/${id}`:"/api/users";
+  fetch(url,{method:id?"PUT":"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)})
+    .then(r=>r.json()).then(d=>{
+      if(d.error){alert(d.error);return;}
+      if(d.ok){closeModal();loadUsers();showToast(id?"Обновлено ✓":"Пользователь создан ✓");}
+    });
+}
+function delUser(id){if(confirm("Удалить пользователя?"))fetch(`/api/users/${id}`,{method:"DELETE"}).then(r=>r.json()).then(d=>{if(d.ok){loadUsers();showToast("Удалено");}else alert(d.error);});}
+function showToast(msg){const t=document.getElementById("toast");t.textContent=msg;t.style.display="block";clearTimeout(toastT);toastT=setTimeout(()=>t.style.display="none",2500);}
+
+loadUsers(); loadBackups();
+</script>
+{% endblock %}

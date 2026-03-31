@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Тонеры{% endblock %}
+{% block content %}
+<div class="topbar">
+  <div><div class="page-title">🧴 Учёт тонеров</div><div class="page-sub">Расходные материалы (тонер, покупается 1 раз в квартал)</div></div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <select class="year-select" id="yearSel" onchange="load()"></select>
+    {% if session.get('role')=='admin' %}
+    <button class="btn btn-green" onclick="openAdd()">+ Добавить тонер</button>
+    {% endif %}
+  </div>
+</div>
+<div class="content">
+  <div id="alertBox"></div>
+  <div class="card" style="padding:0">
+    <div class="table-wrap" id="tableWrap"></div>
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal">
+  <div class="modal">
+    <div class="modal-title" id="modalTitle">Добавить тонер</div>
+    <input type="hidden" id="editId">
+    <div class="form-group"><label class="form-label">Наименование</label><input class="form-input" id="fName"></div>
+    <div class="form-group"><label class="form-label">Расход в месяц (кг)</label><input class="form-input" id="fRate" type="number" step="0.1" value="0.3"></div>
+    <div class="form-group"><label class="form-label">Цена за кг (₽)</label><input class="form-input" id="fPrice" type="number" value="1300"></div>
+    <div class="modal-actions">
+      <button class="btn btn-primary" onclick="save()">Сохранить</button>
+      <button class="btn btn-outline" onclick="closeModal()">Отмена</button>
+    </div>
+  </div>
+</div>
+<div id="toast" style="display:none;position:fixed;bottom:24px;right:24px;background:var(--green);color:#0f1117;padding:10px 18px;border-radius:8px;font-size:13px;font-weight:600;z-index:999"></div>
+
+<script>
+const MONTHS = {{ months | tojson }};
+const MO = MONTHS.map(m=>m.slice(0,3));
+const ROLE = "{{ session.get('role') }}";
+let DATA=[], toastT;
+
+const ySel=document.getElementById("yearSel");
+const cur=new Date().getFullYear();
+for(let y=cur+1;y>=cur-3;y--){const o=document.createElement("option");o.value=y;o.textContent=y;if(y===cur)o.selected=true;ySel.appendChild(o);}
+
+function fmt(n){return new Intl.NumberFormat("ru-RU").format(Math.round(n))}
+
+function load(){
+  fetch(`/api/toners?year=${ySel.value}`).then(r=>r.json()).then(d=>{DATA=d;renderTable();});
+}
+
+function renderTable(){
+  const year=ySel.value;
+  const canEdit=ROLE!=="viewer";
+  let html=`<table><thead><tr>
+    <th>Наименование</th><th>Расход/мес</th><th>Цена</th>
+    ${MO.map(m=>`<th>${m}</th>`).join("")}
+    <th style="color:var(--green)">Итого кг</th>
+    <th style="color:var(--accent)">Сумма ₽</th>
+    ${ROLE==="admin"?`<th></th>`:""}
+  </tr></thead><tbody>`;
+  DATA.forEach(t=>{
+    html+=`<tr>
+      <td style="font-weight:600">${t.name}</td>
+      <td style="color:var(--muted)">${t.monthly_rate} кг/мес</td>
+      <td style="color:var(--muted)">${t.price} ₽/кг</td>
+      ${Array.from({length:12},(_,mi)=>{
+        const val=t.monthly[mi]||0;
+        return canEdit
+          ? `<td><input type="number" min="0" class="${val>0?'qty-input has-val':'qty-input'}" value="${val||""}" placeholder="—"
+               onchange="saveRec(${t.id},${mi},this)" oninput="this.className='qty-input'+(+this.value>0?' has-val':'')"></td>`
+          : `<td style="text-align:center;color:${val>0?'var(--green)':'var(--muted)'}">${val||"—"}</td>`;
+      }).join("")}
+      <td style="font-weight:700;color:${t.total_qty>0?'var(--green)':'var(--muted)'}">${t.total_qty||"—"}</td>
+      <td style="font-weight:700;color:${t.total_cost>0?'var(--accent)':'var(--muted)'}">${t.total_cost>0?fmt(t.total_cost)+" ₽":"—"}</td>
+      ${ROLE==="admin"?`<td><button class="btn btn-orange btn-sm" onclick="openEdit(${t.id})">✏️</button>
+        <button class="btn btn-red btn-sm" onclick="del(${t.id})">✕</button></td>`:""}
+    </tr>`;
+  });
+  html+=`</tbody></table>`;
+  document.getElementById("tableWrap").innerHTML=html;
+}
+
+function saveRec(tid,month,input){
+  const qty=parseInt(input.value)||0;
+  fetch("/api/toner_records",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({toner_id:tid,year:parseInt(ySel.value),month,qty})
+  }).then(r=>r.json()).then(d=>{ if(d.ok) showToast("Сохранено ✓"); });
+}
+
+function openAdd(){document.getElementById("editId").value="";document.getElementById("modalTitle").textContent="Добавить тонер";document.getElementById("fName").value="";document.getElementById("fRate").value=0.3;document.getElementById("fPrice").value=1300;document.getElementById("modal").classList.add("open");}
+function openEdit(id){const t=DATA.find(x=>x.id===id);if(!t)return;document.getElementById("editId").value=id;document.getElementById("modalTitle").textContent="Редактировать тонер";document.getElementById("fName").value=t.name;document.getElementById("fRate").value=t.monthly_rate;document.getElementById("fPrice").value=t.price;document.getElementById("modal").classList.add("open");}
+function closeModal(){document.getElementById("modal").classList.remove("open");}
+function save(){
+  const id=document.getElementById("editId").value;
+  const body={name:document.getElementById("fName").value,monthly_rate:parseFloat(document.getElementById("fRate").value),price:parseInt(document.getElementById("fPrice").value)};
+  const url=id?`/api/toners/${id}`:"/api/toners";
+  const method=id?"PUT":"POST";
+  fetch(url,{method,headers:{"Content-Type":"application/json"},body:JSON.stringify(body)}).then(r=>r.json()).then(d=>{if(d.ok){closeModal();load();showToast(id?"Обновлено ✓":"Добавлено ✓");}});
+}
+function del(id){if(confirm("Удалить тонер?"))fetch(`/api/toners/${id}`,{method:"DELETE"}).then(r=>r.json()).then(d=>{if(d.ok){load();showToast("Удалено");}});}
+function showToast(msg){const t=document.getElementById("toast");t.textContent=msg;t.style.display="block";clearTimeout(toastT);toastT=setTimeout(()=>t.style.display="none",2000);}
+load();
+</script>
+{% endblock %}
