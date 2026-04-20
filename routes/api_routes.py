@@ -135,3 +135,22 @@ def compatible_toners(printer_id):
         "name": t["name"],
         "cartridge": t["compatible_printers"]
     } for t in toners])
+
+@bp.route("/api/events")
+def api_events():
+    return jsonify([])
+
+@bp.route("/api/stats")
+def api_stats():
+    year = request.args.get("year", datetime.now().year)
+    # Ваша логика статистики
+    return jsonify({"total": 0})
+
+@bp.route("/api/floors")
+def api_floors():
+    floors = [1, 2, 3]  # пример
+    return jsonify(floors)
+
+@bp.route("/api/stock/alerts")
+def stock_alerts():
+    return jsonify([])

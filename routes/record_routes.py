@@ -2,17 +2,20 @@
 from flask import Blueprint, render_template, request, redirect, url_for, session
 from models.record import Record
 from models.printer import Printer
+from config import Config  # ← импортируем Config
 
 bp = Blueprint("record", __name__)
-
 
 @bp.route("/records")
 def list_records():
     if "user_id" not in session:
         return redirect(url_for("auth.login"))
     records = Record.get_all_with_printers()
-    return render_template("records.html", records=records)
-
+    return render_template(
+        "records.html",
+        records=records,
+        months=Config.MONTHS  # ← добавлено!
+    )
 
 @bp.route("/record/add", methods=["GET", "POST"])
 def add_record():
@@ -36,7 +39,6 @@ def add_record():
 
     return render_template("record_add.html", printers=printers)
 
-
 @bp.route("/record/edit/<int:rid>", methods=["GET", "POST"])
 def edit_record(rid):
     record = Record.get_by_id(rid)
@@ -57,7 +59,6 @@ def edit_record(rid):
         return redirect(url_for("record.list_records"))
 
     return render_template("record_edit.html", record=record, printers=printers)
-
 
 @bp.route("/record/delete/<int:rid>")
 def delete_record(rid):

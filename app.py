@@ -19,6 +19,7 @@ def create_app():
     from routes.toner_routes import bp as toner_bp
     from routes.admin_routes import bp as admin_bp
     from routes.api_routes import bp as api_bp
+    from routes.analytics_routes import bp as analytics_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -29,14 +30,18 @@ def create_app():
     app.register_blueprint(toner_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(api_bp)
+    app.register_blueprint(analytics_bp)
 
     # Главная страница
     @app.route("/")
     def index():
         return redirect(url_for("dashboard.dashboard"))
 
-    return app
+    @app.context_processor
+    def inject_config():
+        return {"months": Config.MONTHS}
 
+    return app
 
 if __name__ == "__main__":
     # === Инициализация базы данных ===
